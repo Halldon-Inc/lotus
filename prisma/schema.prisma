@@ -1,0 +1,234 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  role          String   @default("SALES") // ADMIN, MANAGER, SALES, PROCUREMENT, OPERATIONS
+  avatar        String?
+  department    String?
+  phone         String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  assignedClients   Client[]       @relation("AssignedRep")
+  createdRequests   Request[]      @relation("RequestCreator")
+  assignedRequests  Request[]      @relation("RequestAssignee")
+  createdQuotes     Quote[]        @relation("QuoteCreator")
+  verifiedPOs       PurchaseOrder[] @relation("POVerifier")
+  sourcedItems      PurchaseOrderItem[] @relation("ItemSourcer")
+  purchasedItems    PurchaseOrderItem[] @relation("ItemPurchaser")
+  alerts            Alert[]
+  activityLogs      ActivityLog[]
+  notes             Note[]
+
+  @@map("users")
+}
+
+model Client {
+  id              String   @id @default(cuid())
+  name            String
+  type            String   // SCHOOL, GOVERNMENT, HEALTHCARE, NONPROFIT, CORPORATE
+  address         String?
+  city            String?
+  state           String?
+  zip             String?
+  contactName     String?
+  contactEmail    String?
+  contactPhone    String?
+  fiscalYearStart DateTime?
+  spendingLimit   Float?
+  hubspotId       String?
+  assignedRepId   String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  assignedRep     User?           @relation("AssignedRep", fields: [assignedRepId], references: [id])
+  requests        Request[]
+  quotes          Quote[]
+  purchaseOrders  PurchaseOrder[]
+
+  @@map("clients")
+}
+
+model Request {
+  id            String   @id @default(cuid())
+  clientId      String
+  assignedToId  String?
+  createdById   String
+  subject       String
+  description   String
+  source        String   @default("MANUAL") // EMAIL, MANUAL, HUBSPOT
+  priority      String   @default("MEDIUM") // LOW, MEDIUM, HIGH, URGENT
+  status        String   @default("NEW") // NEW, ASSIGNED, IN_PROGRESS, QUOTED, CLOSED
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  client        Client   @relation(fields: [clientId], references: [id])
+  assignedTo    User?    @relation("RequestAssignee", fields: [assignedToId], references: [id])
+  createdBy     User     @relation("RequestCreator", fields: [createdById], references: [id])
+  quotes        Quote[]
+
+  @@map("requests")
+}
+
+model Quote {
+  id            String   @id @default(cuid())
+  requestId     String
+  clientId      String
+  createdById   String
+  quoteNumber   String   @unique
+  totalAmount   Float    @default(0)
+  status        String   @default("DRAFT") // DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED
+  validUntil    DateTime?
+  sentAt        DateTime?
+  hubspotQuoteId String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  request       Request     @relation(fields: [requestId], references: [id])
+  client        Client      @relation(fields: [clientId], references: [id])
+  createdBy     User        @relation("QuoteCreator", fields: [createdById], references: [id])
+  lineItems     QuoteLineItem[]
+  purchaseOrder PurchaseOrder?
+
+  @@map("quotes")
+}
+
+model QuoteLineItem {
+  id            String   @id @default(cuid())
+  quoteId       String
+  productName   String
+  description   String?
+  specifications String?  // JSON string for color, size, material, etc.
+  quantity      Int
+  unitPrice     Float
+  totalPrice    Float
+  sourceUrl     String?
+  vendorName    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  quote         Quote    @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@map("quote_line_items")
+}
+
+model PurchaseOrder {
+  id              String   @id @default(cuid())
+  quoteId         String   @unique
+  clientId        String
+  poNumber        String
+  totalAmount     Float
+  status          String   @default("RECEIVED") // RECEIVED, VERIFIED, IN_PURCHASING, PARTIALLY_FULFILLED, FULFILLED, DELIVERED
+  receivedAt      DateTime @default(now())
+  verifiedById    String?
+  discrepancyNotes String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  quote           Quote             @relation(fields: [quoteId], references: [id])
+  client          Client            @relation(fields: [clientId], references: [id])
+  verifiedBy      User?             @relation("POVerifier", fields: [verifiedById], references: [id])
+  items           PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id                    String   @id @default(cuid())
+  purchaseOrderId       String
+  quoteLineItemId       String?
+  quantity              Int
+  status                String   @default("PENDING") // PENDING, SOURCED, PURCHASED, SHIPPED, RECEIVED, MISSING, CANCELLED
+  sourcedById           String?
+  sourcedAt             DateTime?
+  sourceUrl             String?
+  vendorName            String?
+  purchasedById         String?
+  purchasedAt           DateTime?
+  orderNumber           String?
+  expectedDeliveryDate  DateTime?
+  receivedAt            DateTime?
+  receivedQuantity      Int      @default(0)
+  trackingNumber        String?
+  confirmationScreenshot String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  // Relations
+  purchaseOrder         PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  quoteLineItem         QuoteLineItem? @relation(fields: [quoteLineItemId], references: [id])
+  sourcedBy             User?          @relation("ItemSourcer", fields: [sourcedById], references: [id])
+  purchasedBy           User?          @relation("ItemPurchaser", fields: [purchasedById], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+model Alert {
+  id                String   @id @default(cuid())
+  userId            String
+  type              String   // MISSING_ITEM, OVERDUE, ATTENTION_REQUIRED, DEADLINE, SYSTEM
+  title             String
+  message           String
+  relatedEntityType String?
+  relatedEntityId   String?
+  isRead            Boolean  @default(false)
+  readAt            DateTime?
+  severity          String   @default("INFO") // INFO, WARNING, CRITICAL
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  user              User     @relation(fields: [userId], references: [id])
+
+  @@map("alerts")
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  userId     String
+  entityType String
+  entityId   String
+  action     String
+  details    String?  // JSON string
+  createdAt  DateTime @default(now())
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  userId     String
+  content    String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  // Relations
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@map("notes")
+}
