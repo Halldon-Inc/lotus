@@ -45,7 +45,7 @@ async function main() {
 
   const salesRep1 = await prisma.user.create({
     data: {
-      email: 'sales1@lotus.com',
+      email: 'sales@lotus.com',
       name: 'John Sales',
       role: 'SALES',
       department: 'Sales',

@@ -119,7 +119,7 @@ function LoginForm() {
             <div className="space-y-1 text-xs">
               <div><strong>Admin:</strong> admin@lotus.com</div>
               <div><strong>Manager:</strong> manager@lotus.com</div>
-              <div><strong>Sales:</strong> sales1@lotus.com</div>
+              <div><strong>Sales:</strong> sales@lotus.com</div>
               <div><strong>Procurement:</strong> procurement@lotus.com</div>
               <div className="mt-1 text-slate-500">Password: password123</div>
             </div>
