@@ -36,7 +36,7 @@ export const authOptions: NextAuthOptions = {
 
         // For demo purposes, check against default password "password123"
         // In production, you would store password hashes in the database
-        const defaultPasswordHash = '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewGKrKrLXOJqZl.6'
+        const defaultPasswordHash = '$2b$12$Ho/XhYwJYDZ/tt4m0VoD5uH/4oaaGdMl.rDm2vCCy3qmuZVkQeW6K'
         const isPasswordValid = await bcrypt.compare(credentials.password, defaultPasswordHash)
 
         if (!isPasswordValid) {
