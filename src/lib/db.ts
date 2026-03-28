@@ -6,24 +6,51 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
+const isProduction = process.env.NODE_ENV === 'production'
+
 function getDbUrl(): string {
-  // In production on Vercel, copy the SQLite DB to /tmp (writable)
-  if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+  const isVercel = !!process.env.VERCEL
+  
+  if (isVercel || isProduction) {
     const tmpDb = '/tmp/dev.db'
     
     if (!fs.existsSync(tmpDb)) {
-      // Try to find the source DB bundled with the build
+      const cwd = process.cwd()
       const candidates = [
-        path.join(process.cwd(), 'prisma', 'dev.db'),
+        path.join(cwd, 'prisma', 'dev.db'),
+        path.join(cwd, '.next', 'server', 'prisma-dev.db'),
         path.join(__dirname, '..', '..', 'prisma', 'dev.db'),
         path.join(__dirname, '..', '..', '..', 'prisma', 'dev.db'),
+        path.join(__dirname, 'prisma-dev.db'),
+        '/var/task/prisma/dev.db',
+        '/var/task/.next/server/prisma-dev.db',
       ]
       
+      let found = false
       for (const src of candidates) {
-        if (fs.existsSync(src)) {
-          fs.copyFileSync(src, tmpDb)
-          console.log(`[db] Copied SQLite DB from ${src} to ${tmpDb}`)
-          break
+        try {
+          if (fs.existsSync(src)) {
+            fs.copyFileSync(src, tmpDb)
+            console.log(`[db] Copied SQLite DB from ${src} to ${tmpDb}`)
+            found = true
+            break
+          }
+        } catch (e) {
+          console.log(`[db] Failed to check/copy ${src}: ${e}`)
+        }
+      }
+      
+      if (!found) {
+        console.error(`[db] Could not find SQLite DB. cwd=${cwd}, __dirname=${__dirname}`)
+        try {
+          const cwdFiles = fs.readdirSync(cwd)
+          console.error(`[db] Files in cwd: ${cwdFiles.join(', ')}`)
+          if (fs.existsSync(path.join(cwd, 'prisma'))) {
+            const prismaFiles = fs.readdirSync(path.join(cwd, 'prisma'))
+            console.error(`[db] Files in prisma/: ${prismaFiles.join(', ')}`)
+          }
+        } catch (e) {
+          console.error(`[db] Could not list files: ${e}`)
         }
       }
     }
@@ -39,7 +66,7 @@ const dbUrl = getDbUrl()
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === 'production' ? [] : ['query'],
+    log: isProduction ? [] : ['query'],
     datasources: {
       db: {
         url: dbUrl,
@@ -47,4 +74,4 @@ export const prisma =
     },
   })
 
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
+if (!isProduction) globalForPrisma.prisma = prisma
