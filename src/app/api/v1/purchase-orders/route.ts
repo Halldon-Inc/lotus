@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
-import { createPurchaseOrderSchema } from '@/lib/validations'
+import { createPurchaseOrderSchema, createManualPurchaseOrderSchema } from '@/lib/validations'
 import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
       where.OR = [
         { poNumber: { contains: query } },
         { client: { name: { contains: query } } },
-        { quote: { quoteNumber: { contains: query } } },
+        { quote: { is: { quoteNumber: { contains: query } } } },
       ]
     }
 
@@ -132,7 +132,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
-    
+
     if (!session || !['ADMIN', 'MANAGER', 'SALES', 'OPERATIONS'].includes(session.user.role)) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
@@ -141,6 +141,103 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
+    const isManual = !body.quoteId
+
+    if (isManual) {
+      // Manual PO creation path (no quote)
+      const validation = createManualPurchaseOrderSchema.safeParse(body)
+
+      if (!validation.success) {
+        return NextResponse.json(
+          { success: false, error: 'Validation failed', details: validation.error.issues },
+          { status: 400 }
+        )
+      }
+
+      const data = validation.data
+
+      // Verify client exists
+      const client = await prisma.client.findUnique({
+        where: { id: data.clientId },
+        select: { id: true, name: true, type: true },
+      })
+
+      if (!client) {
+        return NextResponse.json(
+          { success: false, error: 'Client not found' },
+          { status: 404 }
+        )
+      }
+
+      // Create PO with items in a transaction
+      const purchaseOrder = await prisma.$transaction(async (tx) => {
+        const newPO = await tx.purchaseOrder.create({
+          data: {
+            clientId: data.clientId,
+            poNumber: data.poNumber,
+            totalAmount: data.totalAmount,
+            scheduledDeliveryDate: data.scheduledDeliveryDate
+              ? new Date(data.scheduledDeliveryDate)
+              : undefined,
+            deliveryMethod: data.deliveryMethod,
+            notes: data.notes,
+          },
+          include: {
+            client: {
+              select: {
+                id: true,
+                name: true,
+                type: true,
+              },
+            },
+          },
+        })
+
+        // Create PO items from the submitted line items
+        const items = await Promise.all(
+          data.items.map((item) =>
+            tx.purchaseOrderItem.create({
+              data: {
+                purchaseOrderId: newPO.id,
+                quantity: item.quantity,
+                vendorName: item.vendorName || undefined,
+                sourceUrl: item.sourceUrl || undefined,
+              },
+            })
+          )
+        )
+
+        return {
+          ...newPO,
+          items,
+        }
+      })
+
+      // Log activity
+      await prisma.activityLog.create({
+        data: {
+          userId: session.user.id,
+          entityType: 'purchaseOrder',
+          entityId: purchaseOrder.id,
+          action: 'created',
+          details: JSON.stringify({
+            poNumber: purchaseOrder.poNumber,
+            clientName: purchaseOrder.client.name,
+            totalAmount: purchaseOrder.totalAmount,
+            itemCount: data.items.length,
+            source: 'manual',
+          }),
+        },
+      })
+
+      return NextResponse.json({
+        success: true,
+        data: purchaseOrder,
+        message: 'Purchase order created successfully',
+      })
+    }
+
+    // Quote-based PO creation path
     const validation = createPurchaseOrderSchema.safeParse(body)
 
     if (!validation.success) {
@@ -190,8 +287,12 @@ export async function POST(request: NextRequest) {
           quoteId: data.quoteId,
           clientId: quote.clientId,
           poNumber: data.poNumber,
-          totalAmount: data.totalAmount,
+          totalAmount: data.totalAmount || quote.totalAmount,
           discrepancyNotes: data.discrepancyNotes,
+          scheduledDeliveryDate: data.scheduledDeliveryDate
+            ? new Date(data.scheduledDeliveryDate)
+            : undefined,
+          deliveryMethod: data.deliveryMethod,
         },
         include: {
           client: {
@@ -242,6 +343,7 @@ export async function POST(request: NextRequest) {
           clientName: purchaseOrder.client.name,
           totalAmount: purchaseOrder.totalAmount,
           itemCount: quote.lineItems.length,
+          source: 'quote',
         }),
       },
     })

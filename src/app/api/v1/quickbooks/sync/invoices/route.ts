@@ -61,8 +61,9 @@ export async function POST() {
           })
         }
 
-        // Build line items from the PO's quote
-        const lineItems = ci.purchaseOrder.quote.lineItems.map((item) => ({
+        // Build line items from the PO's quote (if available)
+        const quoteLineItems = ci.purchaseOrder.quote?.lineItems ?? []
+        const lineItems = quoteLineItems.map((item) => ({
           productName: item.productName,
           description: item.description,
           quantity: item.quantity,

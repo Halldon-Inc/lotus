@@ -145,7 +145,7 @@ model QuoteLineItem {
 
 model PurchaseOrder {
   id              String   @id @default(cuid())
-  quoteId         String   @unique
+  quoteId         String?  @unique
   clientId        String
   poNumber        String
   totalAmount     Float
@@ -157,11 +157,12 @@ model PurchaseOrder {
   deliveryMethod  String?
   rejectionReason String?
   rejectionCount  Int      @default(0)
+  notes           String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   // Relations
-  quote           Quote             @relation(fields: [quoteId], references: [id])
+  quote           Quote?            @relation(fields: [quoteId], references: [id])
   client          Client            @relation(fields: [clientId], references: [id])
   verifiedBy      User?             @relation("POVerifier", fields: [verifiedById], references: [id])
   items           PurchaseOrderItem[]

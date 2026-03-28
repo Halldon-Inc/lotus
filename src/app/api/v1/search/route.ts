@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       clients: Array<{ id: string; name: string; type: string; city: string | null; state: string | null; contactName: string | null; createdAt: Date }>
       requests: Array<{ id: string; subject: string; description: string; priority: string; status: string; createdAt: Date; client: { id: string; name: string; type: string }; assignedTo: { name: string | null } | null }>
       quotes: Array<{ id: string; quoteNumber: string; totalAmount: number; status: string; createdAt: Date; client: { id: string; name: string; type: string }; request: { subject: string }; _count: { lineItems: number } }>
-      purchaseOrders: Array<{ id: string; poNumber: string; totalAmount: number; status: string; receivedAt: Date; client: { id: string; name: string; type: string }; quote: { quoteNumber: string }; _count: { items: number } }>
+      purchaseOrders: Array<{ id: string; poNumber: string; totalAmount: number; status: string; receivedAt: Date; client: { id: string; name: string; type: string }; quote: { quoteNumber: string } | null; _count: { items: number } }>
     } = {
       clients: [],
       requests: [],
@@ -150,8 +150,8 @@ export async function GET(request: NextRequest) {
           OR: [
             { poNumber: { contains: query } },
             { client: { name: { contains: query } } },
-            { quote: { quoteNumber: { contains: query } } },
-            { items: { some: { quoteLineItem: { productName: { contains: query } } } } },
+            { quote: { is: { quoteNumber: { contains: query } } } },
+            { items: { some: { quoteLineItem: { is: { productName: { contains: query } } } } } },
           ],
         },
         select: {
@@ -234,7 +234,7 @@ export async function GET(request: NextRequest) {
         url: `/orders/${po.id}`,
         metadata: {
           clientName: po.client.name,
-          quoteNumber: po.quote.quoteNumber,
+          quoteNumber: po.quote?.quoteNumber ?? 'N/A',
           totalAmount: po.totalAmount,
         },
       })),

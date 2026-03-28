@@ -77,12 +77,34 @@ export const updateQuoteSchema = z.object({
   lineItems: z.array(createQuoteLineItemSchema.extend({ id: z.string().optional() })).optional(),
 })
 
-// Purchase Order validation schemas
+// Purchase Order validation schemas (from accepted quote)
 export const createPurchaseOrderSchema = z.object({
   quoteId: z.string().min(1, 'Quote is required'),
   poNumber: z.string().min(1, 'PO number is required').max(100, 'PO number too long'),
-  totalAmount: z.number().positive('Total amount must be positive'),
+  totalAmount: z.number().positive('Total amount must be positive').optional(),
   discrepancyNotes: z.string().optional(),
+  scheduledDeliveryDate: z.string().optional(),
+  deliveryMethod: z.enum(['CARRIER', 'MANUAL']).optional(),
+})
+
+// Purchase Order manual creation (no quote)
+export const manualPurchaseOrderLineItemSchema = z.object({
+  productName: z.string().min(1, 'Product name is required').max(200, 'Product name too long'),
+  description: z.string().optional(),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  unitPrice: z.number().positive('Unit price must be positive'),
+  vendorName: z.string().optional(),
+  sourceUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
+})
+
+export const createManualPurchaseOrderSchema = z.object({
+  clientId: z.string().min(1, 'Client is required'),
+  poNumber: z.string().min(1, 'PO number is required').max(100, 'PO number too long'),
+  items: z.array(manualPurchaseOrderLineItemSchema).min(1, 'At least one line item is required'),
+  totalAmount: z.number().positive('Total amount must be positive'),
+  scheduledDeliveryDate: z.string().optional(),
+  deliveryMethod: z.enum(['CARRIER', 'MANUAL']).optional(),
+  notes: z.string().optional(),
 })
 
 export const updatePurchaseOrderSchema = z.object({
@@ -404,6 +426,8 @@ export type CreateQuoteInput = z.infer<typeof createQuoteSchema>
 export type UpdateQuoteInput = z.infer<typeof updateQuoteSchema>
 export type CreateQuoteLineItemInput = z.infer<typeof createQuoteLineItemSchema>
 export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>
+export type CreateManualPurchaseOrderInput = z.infer<typeof createManualPurchaseOrderSchema>
+export type ManualPurchaseOrderLineItemInput = z.infer<typeof manualPurchaseOrderLineItemSchema>
 export type UpdatePurchaseOrderInput = z.infer<typeof updatePurchaseOrderSchema>
 export type UpdatePurchaseOrderItemInput = z.infer<typeof updatePurchaseOrderItemSchema>
 export type CreateAlertInput = z.infer<typeof createAlertSchema>

@@ -34,9 +34,11 @@ import {
   CheckCircle,
   AlertTriangle,
   Eye,
+  Plus,
 } from 'lucide-react'
 import { formatCurrency, formatDate, debounce } from '@/lib/utils'
 import Link from 'next/link'
+import { CreatePoDialog } from '@/components/shared/create-po-dialog'
 
 interface PurchaseOrder {
   id: string
@@ -57,7 +59,7 @@ interface PurchaseOrder {
     request: {
       subject: string
     }
-  }
+  } | null
   verifiedBy: {
     id: string
     name: string
@@ -108,6 +110,7 @@ export default function PurchaseOrdersPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalOrders, setTotalOrders] = useState(0)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   const fetchOrders = async (search: string = '', status: string = 'all', page: number = 1) => {
     try {
@@ -210,6 +213,15 @@ export default function PurchaseOrdersPage() {
             Manage purchase orders and track fulfillment
           </p>
         </div>
+        {canManageOrders && (
+          <Button
+            onClick={() => setCreateDialogOpen(true)}
+            className="bg-[#0D7377] hover:bg-[#0B6163]"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Create Purchase Order
+          </Button>
+        )}
       </div>
 
       {/* Stats Cards (counts from current page only, not global totals) */}
@@ -347,12 +359,16 @@ export default function PurchaseOrdersPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          <div className="font-medium">{order.quote.quoteNumber}</div>
-                          <div className="text-muted-foreground truncate max-w-[200px]">
-                            {order.quote.request.subject}
+                        {order.quote ? (
+                          <div className="text-sm">
+                            <div className="font-medium">{order.quote.quoteNumber}</div>
+                            <div className="text-muted-foreground truncate max-w-[200px]">
+                              {order.quote.request.subject}
+                            </div>
                           </div>
-                        </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground italic">Manual entry</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <StatusPill status={order.status} />
@@ -434,6 +450,13 @@ export default function PurchaseOrdersPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create PO Dialog */}
+      <CreatePoDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSuccess={() => fetchOrders(searchQuery, statusFilter, currentPage)}
+      />
     </div>
   )
 }
