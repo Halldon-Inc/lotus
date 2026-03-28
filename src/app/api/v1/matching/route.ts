@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createMatchSchema } from '@/lib/validations'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions)
 
@@ -15,60 +15,99 @@ export async function GET() {
       )
     }
 
+    const { searchParams } = new URL(request.url)
+    const view = searchParams.get('view')
+
+    // List view: paginated match records with related data
+    if (view === 'list') {
+      const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10))
+      const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '10', 10)))
+      const status = searchParams.get('status')
+      const search = searchParams.get('search') || ''
+
+      const where: Record<string, unknown> = {}
+
+      if (status) {
+        where.status = status
+      }
+
+      if (search) {
+        where.OR = [
+          { invoice: { invoiceNumber: { contains: search, mode: 'insensitive' } } },
+          { invoice: { vendorName: { contains: search, mode: 'insensitive' } } },
+          { purchaseOrder: { poNumber: { contains: search, mode: 'insensitive' } } },
+          { purchaseOrder: { client: { name: { contains: search, mode: 'insensitive' } } } },
+        ]
+      }
+
+      const [items, total] = await Promise.all([
+        prisma.matchRecord.findMany({
+          where,
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          orderBy: { createdAt: 'desc' },
+          include: {
+            purchaseOrder: {
+              select: {
+                id: true,
+                poNumber: true,
+                totalAmount: true,
+                client: {
+                  select: {
+                    id: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+            invoice: {
+              select: {
+                id: true,
+                invoiceNumber: true,
+                vendorName: true,
+                totalAmount: true,
+              },
+            },
+          },
+        }),
+        prisma.matchRecord.count({ where }),
+      ])
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          items,
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize),
+        },
+      })
+    }
+
+    // Default: summary stats
     const [
-      totalMatches,
+      total,
       autoMatched,
-      partialMatches,
-      mismatches,
-      manualOverrides,
-      pendingInvoices,
-      recentMatches,
+      partialMatch,
+      mismatch,
+      manualOverride,
     ] = await Promise.all([
       prisma.matchRecord.count(),
       prisma.matchRecord.count({ where: { status: 'AUTO_MATCHED' } }),
       prisma.matchRecord.count({ where: { status: 'PARTIAL_MATCH' } }),
       prisma.matchRecord.count({ where: { status: 'MISMATCH' } }),
       prisma.matchRecord.count({ where: { status: 'MANUAL_OVERRIDE' } }),
-      prisma.invoice.count({ where: { status: 'PENDING' } }),
-      prisma.matchRecord.findMany({
-        take: 10,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          purchaseOrder: {
-            select: {
-              id: true,
-              poNumber: true,
-              totalAmount: true,
-              client: {
-                select: {
-                  id: true,
-                  name: true,
-                },
-              },
-            },
-          },
-          invoice: {
-            select: {
-              id: true,
-              invoiceNumber: true,
-              vendorName: true,
-              totalAmount: true,
-            },
-          },
-        },
-      }),
     ])
 
     return NextResponse.json({
       success: true,
       data: {
-        totalMatches,
+        total,
         autoMatched,
-        partialMatches,
-        mismatches,
-        manualOverrides,
-        pendingInvoices,
-        recentMatches,
+        partialMatch,
+        mismatch,
+        manualOverride,
       },
     })
   } catch (error) {

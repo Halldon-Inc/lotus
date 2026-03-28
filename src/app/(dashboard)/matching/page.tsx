@@ -45,10 +45,9 @@ import type { ApiResponse } from '@/types'
 interface MatchListItem {
   id: string
   status: string
-  tolerancePercent: number
-  totalVariance: number
+  toleranceUsed: number | null
+  details: string | null
   createdAt: string
-  updatedAt: string
   invoice: {
     id: string
     invoiceNumber: string
@@ -64,10 +63,6 @@ interface MatchListItem {
       name: string
     }
   }
-  overrideBy: {
-    id: string
-    name: string
-  } | null
 }
 
 interface MatchesResponse {
@@ -108,6 +103,10 @@ function getStatusRowClass(status: string): string {
   }
 }
 
+function getVariance(match: MatchListItem): number {
+  return match.purchaseOrder.totalAmount - match.invoice.totalAmount
+}
+
 function getStatusIcon(status: string) {
   switch (status) {
     case 'AUTO_MATCHED': return <CheckCircle className="h-4 w-4 text-green-600" />
@@ -146,6 +145,8 @@ export default function MatchingPage() {
         params.set('status', status)
       }
 
+      params.set('view', 'list')
+
       const response = await fetch(`/api/v1/matching?${params}`)
       const result: MatchesResponse = await response.json()
 
@@ -164,7 +165,7 @@ export default function MatchingPage() {
 
   const fetchStats = async () => {
     try {
-      const response = await fetch('/api/v1/matching/stats')
+      const response = await fetch('/api/v1/matching')
       const result: ApiResponse<MatchStats> = await response.json()
       if (result.success && result.data) {
         setStats(result.data)
@@ -343,7 +344,7 @@ export default function MatchingPage() {
                     </TableCell>
                     <TableCell>
                       <span className="text-sm font-medium text-amber-600">
-                        {formatCurrency(Math.abs(match.totalVariance))}
+                        {formatCurrency(Math.abs(getVariance(match)))}
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
@@ -471,9 +472,9 @@ export default function MatchingPage() {
                       </TableCell>
                       <TableCell>
                         <span className={`text-sm font-medium ${
-                          match.totalVariance === 0 ? 'text-green-600' : 'text-amber-600'
+                          getVariance(match) === 0 ? 'text-green-600' : 'text-amber-600'
                         }`}>
-                          {match.totalVariance === 0 ? '\u2014' : formatCurrency(Math.abs(match.totalVariance))}
+                          {getVariance(match) === 0 ? 'None' : formatCurrency(Math.abs(getVariance(match)))}
                         </span>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">

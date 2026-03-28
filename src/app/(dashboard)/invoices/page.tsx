@@ -48,18 +48,14 @@ interface InvoiceListItem {
   totalAmount: number
   status: string
   dueDate: string | null
-  receivedDate: string | null
+  receivedAt: string | null
   purchaseOrder: {
     id: string
     poNumber: string
   } | null
-  createdBy: {
-    id: string
-    name: string
-  }
   _count: {
     lineItems: number
-    matches: number
+    matchRecords: number
   }
   createdAt: string
 }
@@ -79,9 +75,8 @@ interface InvoicesResponse {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'All Statuses' },
   { value: 'PENDING', label: 'Pending' },
-  { value: 'PENDING_MATCH', label: 'Pending Match' },
   { value: 'MATCHED', label: 'Matched' },
-  { value: 'PARTIAL_MATCH', label: 'Partial Match' },
+  { value: 'PARTIAL', label: 'Partial Match' },
   { value: 'DISPUTED', label: 'Disputed' },
   { value: 'PAID', label: 'Paid' },
 ]
@@ -163,7 +158,7 @@ export default function InvoicesPage() {
   const canManage = session?.user.role && ['ADMIN', 'MANAGER', 'PROCUREMENT', 'OPERATIONS'].includes(session.user.role)
 
   // KPI calculations from current page data
-  const pendingMatch = invoices.filter(i => i.status === 'PENDING' || i.status === 'PENDING_MATCH').length
+  const pendingMatch = invoices.filter(i => i.status === 'PENDING').length
   const matched = invoices.filter(i => i.status === 'MATCHED').length
   const disputed = invoices.filter(i => i.status === 'DISPUTED').length
 
@@ -354,8 +349,7 @@ export default function InvoicesPage() {
                       </TableCell>
                       <TableCell>
                         <div className="text-sm text-muted-foreground">
-                          <div>{formatDate(invoice.createdAt)}</div>
-                          <div className="text-xs">by {invoice.createdBy.name}</div>
+                          {formatDate(invoice.createdAt)}
                         </div>
                       </TableCell>
                       <TableCell>

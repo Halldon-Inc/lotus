@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createRequestSchema } from '@/lib/validations'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,13 +26,13 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize
 
-    let where: any = {}
+    let where: Prisma.RequestWhereInput = {}
 
     if (query) {
       where.OR = [
-        { subject: { contains: query, mode: 'insensitive' as const } },
-        { description: { contains: query, mode: 'insensitive' as const } },
-        { client: { name: { contains: query, mode: 'insensitive' as const } } },
+        { subject: { contains: query } },
+        { description: { contains: query } },
+        { client: { name: { contains: query } } },
       ]
     }
 

@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const defaultStartDate = startDate ? new Date(startDate) : new Date(new Date().getFullYear(), 3, 1) // April 1st
     const defaultEndDate = endDate ? new Date(endDate) : new Date(new Date().getFullYear() + 1, 2, 31) // March 31st
 
-    let reportData: any = {}
+    let reportData: Record<string, unknown> = {}
 
     switch (reportType) {
       case 'client-spending':

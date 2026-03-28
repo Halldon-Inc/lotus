@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createAlertSchema } from '@/lib/validations'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize
 
-    const where: any = {
+    const where: Prisma.AlertWhereInput = {
       userId: session.user.id,
     }
 

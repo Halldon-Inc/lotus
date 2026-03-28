@@ -94,6 +94,8 @@ const STATUS_OPTIONS = [
   { value: 'PARTIALLY_FULFILLED', label: 'Partially Fulfilled' },
   { value: 'FULFILLED', label: 'Fulfilled' },
   { value: 'DELIVERED', label: 'Delivered' },
+  { value: 'NEEDS_CORRECTION', label: 'Needs Correction' },
+  { value: 'RESUBMITTED', label: 'Resubmitted' },
 ]
 
 export default function PurchaseOrdersPage() {

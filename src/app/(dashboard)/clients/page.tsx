@@ -299,7 +299,7 @@ export default function ClientsPage() {
                         <div className="text-sm">
                           {client.city && client.state
                             ? `${client.city}, ${client.state}`
-                            : client.city || client.state || '—'}
+                            : client.city || client.state || 'N/A'}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -328,7 +328,7 @@ export default function ClientsPage() {
                         <div className="text-sm">
                           {client.spendingLimit 
                             ? formatCurrency(client.spendingLimit)
-                            : '—'
+                            : 'N/A'
                           }
                         </div>
                       </TableCell>

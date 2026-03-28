@@ -110,7 +110,7 @@ export async function PATCH(
     }
 
     // Only admins can change roles and active status
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       name: data.name,
       department: data.department,
       phone: data.phone,

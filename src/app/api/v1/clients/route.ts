@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createClientSchema, paginationSchema } from '@/lib/validations'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,9 +28,9 @@ export async function GET(request: NextRequest) {
     const where = query
       ? {
           OR: [
-            { name: { contains: query, mode: 'insensitive' as const } },
-            { contactName: { contains: query, mode: 'insensitive' as const } },
-            { contactEmail: { contains: query, mode: 'insensitive' as const } },
+            { name: { contains: query } },
+            { contactName: { contains: query } },
+            { contactEmail: { contains: query } },
           ],
         }
       : {}
@@ -101,7 +102,7 @@ export async function POST(request: NextRequest) {
     }
 
     const data = validation.data
-    const clientData: any = {
+    const clientData: Prisma.ClientUncheckedCreateInput = {
       name: data.name,
       type: data.type,
       address: data.address,

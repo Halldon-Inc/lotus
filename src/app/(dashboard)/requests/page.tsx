@@ -386,7 +386,7 @@ export default function RequestsPage() {
                               {request.quotes.length} quote{request.quotes.length !== 1 ? 's' : ''}
                             </Badge>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground">None</span>
                           )}
                         </div>
                       </TableCell>

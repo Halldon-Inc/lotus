@@ -31,7 +31,12 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    const searchResults: any = {
+    const searchResults: {
+      clients: Array<{ id: string; name: string; type: string; city: string | null; state: string | null; contactName: string | null; createdAt: Date }>
+      requests: Array<{ id: string; subject: string; description: string; priority: string; status: string; createdAt: Date; client: { id: string; name: string; type: string }; assignedTo: { name: string | null } | null }>
+      quotes: Array<{ id: string; quoteNumber: string; totalAmount: number; status: string; createdAt: Date; client: { id: string; name: string; type: string }; request: { subject: string }; _count: { lineItems: number } }>
+      purchaseOrders: Array<{ id: string; poNumber: string; totalAmount: number; status: string; receivedAt: Date; client: { id: string; name: string; type: string }; quote: { quoteNumber: string }; _count: { items: number } }>
+    } = {
       clients: [],
       requests: [],
       quotes: [],
@@ -180,7 +185,7 @@ export async function GET(request: NextRequest) {
 
     // Transform results for unified format
     const transformedResults = {
-      clients: searchResults.clients.map((client: any) => ({
+      clients: searchResults.clients.map((client) => ({
         id: client.id,
         type: 'client' as const,
         title: client.name,
@@ -192,7 +197,7 @@ export async function GET(request: NextRequest) {
           contactName: client.contactName,
         },
       })),
-      requests: searchResults.requests.map((request: any) => ({
+      requests: searchResults.requests.map((request) => ({
         id: request.id,
         type: 'request' as const,
         title: request.subject,
@@ -205,7 +210,7 @@ export async function GET(request: NextRequest) {
           assignedTo: request.assignedTo?.name,
         },
       })),
-      quotes: searchResults.quotes.map((quote: any) => ({
+      quotes: searchResults.quotes.map((quote) => ({
         id: quote.id,
         type: 'quote' as const,
         title: quote.quoteNumber,
@@ -219,7 +224,7 @@ export async function GET(request: NextRequest) {
           totalAmount: quote.totalAmount,
         },
       })),
-      purchaseOrders: searchResults.purchaseOrders.map((po: any) => ({
+      purchaseOrders: searchResults.purchaseOrders.map((po) => ({
         id: po.id,
         type: 'order' as const,
         title: po.poNumber,

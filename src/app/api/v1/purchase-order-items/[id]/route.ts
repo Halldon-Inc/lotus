@@ -118,7 +118,7 @@ export async function PATCH(
     }
 
     // Update item with automatic field population
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       ...data,
     }
 

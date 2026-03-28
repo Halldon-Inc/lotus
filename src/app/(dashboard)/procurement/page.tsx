@@ -199,7 +199,7 @@ export default function ProcurementPage() {
 
     try {
       setUpdating(true)
-      const updateData: any = {}
+      const updateData: Record<string, unknown> = {}
 
       // Only include changed fields
       if (formData.status !== selectedItem.status) {

@@ -99,7 +99,7 @@ export type QuoteLineItem = {
   quoteId: string
   productName: string
   description: string | null
-  specifications: any | null
+  specifications: Record<string, string> | null
   quantity: number
   unitPrice: number
   totalPrice: number
@@ -190,7 +190,7 @@ export type ActivityLog = {
   entityType: string
   entityId: string
   action: string
-  details: any | null
+  details: Record<string, unknown> | null
   createdAt: Date
 }
 
@@ -431,7 +431,7 @@ export type CreateRequestForm = {
 export type CreateQuoteLineItemForm = {
   productName: string
   description?: string
-  specifications?: any
+  specifications?: Record<string, string>
   quantity: number
   unitPrice: number
   sourceUrl?: string
@@ -476,13 +476,6 @@ export type PaginationOptions = {
   sortDirection?: SortDirection
 }
 
-export type TableColumn<T = any> = {
-  key: string
-  label: string
-  sortable?: boolean
-  render?: (value: any, row: T) => React.ReactNode
-}
-
 // Component prop types
 export type StatusPillProps = {
   status: string
@@ -494,14 +487,4 @@ export type AgingIndicatorProps = {
   date: Date | string
   expectedDate?: Date | string
   showText?: boolean
-}
-
-export type DataTableProps<T = any> = {
-  data: T[]
-  columns: TableColumn<T>[]
-  loading?: boolean
-  pagination?: PaginationOptions
-  onPaginationChange?: (pagination: PaginationOptions) => void
-  onRowClick?: (row: T) => void
-  emptyMessage?: string
 }

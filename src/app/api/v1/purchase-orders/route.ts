@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createPurchaseOrderSchema } from '@/lib/validations'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -26,13 +27,13 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize
 
-    const where: any = {}
+    const where: Prisma.PurchaseOrderWhereInput = {}
 
     if (query) {
       where.OR = [
-        { poNumber: { contains: query, mode: 'insensitive' } },
-        { client: { name: { contains: query, mode: 'insensitive' } } },
-        { quote: { quoteNumber: { contains: query, mode: 'insensitive' } } },
+        { poNumber: { contains: query } },
+        { client: { name: { contains: query } } },
+        { quote: { quoteNumber: { contains: query } } },
       ]
     }
 

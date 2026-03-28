@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createQuoteSchema, updateQuoteSchema } from '@/lib/validations'
 import { generateQuoteNumber } from '@/lib/utils'
+import type { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,13 +28,13 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize
 
-    const where: any = {}
+    const where: Prisma.QuoteWhereInput = {}
 
     if (query) {
       where.OR = [
-        { quoteNumber: { contains: query, mode: 'insensitive' } },
-        { client: { name: { contains: query, mode: 'insensitive' } } },
-        { request: { subject: { contains: query, mode: 'insensitive' } } },
+        { quoteNumber: { contains: query } },
+        { client: { name: { contains: query } } },
+        { request: { subject: { contains: query } } },
       ]
     }
 
