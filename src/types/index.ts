@@ -254,6 +254,140 @@ export type RepPerformanceReport = {
   customerSatisfaction: number
 }
 
+// Invoice types
+export type Invoice = {
+  id: string
+  invoiceNumber: string
+  vendorName: string
+  totalAmount: number
+  status: 'PENDING' | 'PENDING_MATCH' | 'MATCHED' | 'PARTIAL_MATCH' | 'DISPUTED' | 'PAID'
+  dueDate: Date | null
+  receivedDate: Date | null
+  fileUrl: string | null
+  notes: string | null
+  purchaseOrderId: string | null
+  createdById: string
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type InvoiceLineItem = {
+  id: string
+  invoiceId: string
+  description: string
+  quantity: number
+  unitPrice: number
+  totalPrice: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type InvoiceWithDetails = Invoice & {
+  lineItems: InvoiceLineItem[]
+  purchaseOrder: (PurchaseOrder & { client: Client }) | null
+  createdBy: User
+  matches: MatchRecord[]
+}
+
+// Matching types
+export type MatchRecord = {
+  id: string
+  invoiceId: string
+  purchaseOrderId: string
+  status: 'AUTO_MATCHED' | 'PARTIAL_MATCH' | 'MISMATCH' | 'MANUAL_OVERRIDE'
+  tolerancePercent: number
+  totalVariance: number
+  notes: string | null
+  overrideById: string | null
+  overrideAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type MatchLineComparison = {
+  id: string
+  matchRecordId: string
+  description: string
+  poQuantity: number | null
+  poUnitPrice: number | null
+  invoiceQuantity: number
+  invoiceUnitPrice: number
+  receivedQuantity: number | null
+  quantityMatch: 'MATCH' | 'PARTIAL' | 'MISMATCH'
+  priceMatch: 'MATCH' | 'PARTIAL' | 'MISMATCH'
+}
+
+export type MatchRecordWithDetails = MatchRecord & {
+  invoice: Invoice
+  purchaseOrder: PurchaseOrder & { client: Client }
+  lineComparisons: MatchLineComparison[]
+  overrideBy: User | null
+}
+
+// Approval types
+export type ApprovalRule = {
+  id: string
+  name: string
+  entityType: 'PURCHASE_ORDER' | 'INVOICE' | 'REQUEST'
+  conditionField: string
+  conditionOp: 'gt' | 'lt' | 'gte' | 'lte' | 'eq'
+  conditionValue: string
+  approverRole: string | null
+  approverUserId: string | null
+  priority: number
+  isActive: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type ApprovalRequest = {
+  id: string
+  entityType: string
+  entityId: string
+  ruleId: string | null
+  requestedById: string
+  approverId: string | null
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ESCALATED'
+  requestedAt: Date
+  resolvedAt: Date | null
+  notes: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type ApprovalRequestWithDetails = ApprovalRequest & {
+  rule: ApprovalRule | null
+  requestedBy: User
+  approver: User | null
+}
+
+// Discrepancy types
+export type Discrepancy = {
+  id: string
+  purchaseOrderId: string
+  purchaseOrderItemId: string | null
+  invoiceId: string | null
+  type: 'QUANTITY_MISMATCH' | 'PRICE_MISMATCH' | 'WRONG_ITEM' | 'DAMAGED' | 'MISSING' | 'EXTRA'
+  expectedValue: string
+  actualValue: string
+  status: 'OPEN' | 'INVESTIGATING' | 'RESOLVED' | 'ESCALATED'
+  reportedById: string
+  resolvedById: string | null
+  resolvedAt: Date | null
+  resolutionNotes: string | null
+  photoUrls: string | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type DiscrepancyWithDetails = Discrepancy & {
+  purchaseOrder: PurchaseOrder & { client: Client }
+  purchaseOrderItem: (PurchaseOrderItem & { quoteLineItem: QuoteLineItem | null }) | null
+  invoice: Invoice | null
+  reportedBy: User
+  resolvedBy: User | null
+}
+
 // API Response types
 export type ApiResponse<T = any> = {
   success: boolean

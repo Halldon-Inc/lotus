@@ -208,11 +208,18 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json({
+    const response: Record<string, unknown> = {
       success: true,
       data: quote,
       message: 'Quote updated successfully',
-    })
+    }
+
+    // When quote is ACCEPTED, hint that a PO should be created
+    if (data.status === 'ACCEPTED' && existingQuote.status !== 'ACCEPTED') {
+      response.hint = 'Quote accepted. A purchase order should be created from this quote.'
+    }
+
+    return NextResponse.json(response)
   } catch (error) {
     console.error('Quote PATCH error:', error)
     return NextResponse.json(

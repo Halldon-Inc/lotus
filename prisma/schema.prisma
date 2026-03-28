@@ -33,6 +33,11 @@ model User {
   alerts            Alert[]
   activityLogs      ActivityLog[]
   notes             Note[]
+  approvalRules     ApprovalRule[]     @relation("ApprovalRuleApprover")
+  approvalRequests  ApprovalRequest[]  @relation("ApprovalRequester")
+  approvalDecisions ApprovalRequest[]  @relation("ApprovalApprover")
+  reportedDiscrepancies Discrepancy[]  @relation("DiscrepancyReporter")
+  resolvedDiscrepancies Discrepancy[]  @relation("DiscrepancyResolver")
 
   @@map("users")
 }
@@ -60,6 +65,11 @@ model Client {
   requests        Request[]
   quotes          Quote[]
   purchaseOrders  PurchaseOrder[]
+  shippingAddress String?
+  shippingCity    String?
+  shippingState   String?
+  shippingZip     String?
+  clientInvoices  ClientInvoice[]
 
   @@map("clients")
 }
@@ -137,10 +147,14 @@ model PurchaseOrder {
   clientId        String
   poNumber        String
   totalAmount     Float
-  status          String   @default("RECEIVED") // RECEIVED, VERIFIED, IN_PURCHASING, PARTIALLY_FULFILLED, FULFILLED, DELIVERED
+  status          String   @default("RECEIVED") // RECEIVED, VERIFIED, NEEDS_CORRECTION, RESUBMITTED, IN_PURCHASING, PARTIALLY_FULFILLED, FULFILLED, DELIVERED
   receivedAt      DateTime @default(now())
   verifiedById    String?
   discrepancyNotes String?
+  scheduledDeliveryDate DateTime?
+  deliveryMethod  String?
+  rejectionReason String?
+  rejectionCount  Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -149,6 +163,11 @@ model PurchaseOrder {
   client          Client            @relation(fields: [clientId], references: [id])
   verifiedBy      User?             @relation("POVerifier", fields: [verifiedById], references: [id])
   items           PurchaseOrderItem[]
+  invoices        Invoice[]
+  matchRecords    MatchRecord[]
+  discrepancies   Discrepancy[]
+  shipments       Shipment[]
+  clientInvoices  ClientInvoice[]
 
   @@map("purchase_orders")
 }
@@ -179,6 +198,8 @@ model PurchaseOrderItem {
   quoteLineItem         QuoteLineItem? @relation(fields: [quoteLineItemId], references: [id])
   sourcedBy             User?          @relation("ItemSourcer", fields: [sourcedById], references: [id])
   purchasedBy           User?          @relation("ItemPurchaser", fields: [purchasedById], references: [id])
+  discrepancies         Discrepancy[]
+  shipmentItems         ShipmentItem[]
 
   @@map("purchase_order_items")
 }
@@ -231,4 +252,198 @@ model Note {
   user       User     @relation(fields: [userId], references: [id])
 
   @@map("notes")
+}
+
+model Invoice {
+  id              String   @id @default(cuid())
+  invoiceNumber   String   @unique
+  vendorName      String
+  totalAmount     Float
+  status          String   @default("PENDING") // PENDING, MATCHED, PARTIAL, DISPUTED, PAID
+  receivedAt      DateTime @default(now())
+  dueDate         DateTime?
+  fileUrl         String?
+  purchaseOrderId String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  lineItems       InvoiceLineItem[]
+  matchRecords    MatchRecord[]
+  discrepancies   Discrepancy[]
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@map("invoices")
+}
+
+model InvoiceLineItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Float
+  totalPrice  Float
+
+  // Relations
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@map("invoice_line_items")
+}
+
+model MatchRecord {
+  id              String    @id @default(cuid())
+  purchaseOrderId String
+  invoiceId       String
+  status          String    @default("PENDING") // AUTO_MATCHED, PARTIAL_MATCH, MISMATCH, MANUAL_OVERRIDE
+  matchedAt       DateTime?
+  notes           String?
+  toleranceUsed   Float?
+  details         String?   // JSON string with match details
+  createdAt       DateTime  @default(now())
+
+  // Relations
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id])
+
+  @@map("match_records")
+}
+
+model ApprovalRule {
+  id             String   @id @default(cuid())
+  name           String
+  entityType     String   // PURCHASE_ORDER, INVOICE, REQUEST
+  conditionField String   // e.g. "totalAmount", "priority"
+  conditionOp    String   // gt, lt, gte, lte, eq
+  conditionValue String   // threshold value as string
+  approverRole   String?  // role that can approve
+  approverUserId String?  // specific user that can approve
+  priority       Int      @default(0)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Relations
+  approvalRequests ApprovalRequest[]
+  approverUser     User?    @relation("ApprovalRuleApprover", fields: [approverUserId], references: [id])
+
+  @@map("approval_rules")
+}
+
+model ApprovalRequest {
+  id            String    @id @default(cuid())
+  entityType    String
+  entityId      String
+  ruleId        String?
+  requestedById String
+  approverId    String?
+  status        String    @default("PENDING") // PENDING, APPROVED, REJECTED, ESCALATED
+  requestedAt   DateTime  @default(now())
+  resolvedAt    DateTime?
+  notes         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  rule          ApprovalRule? @relation(fields: [ruleId], references: [id])
+  requestedBy   User          @relation("ApprovalRequester", fields: [requestedById], references: [id])
+  approver      User?         @relation("ApprovalApprover", fields: [approverId], references: [id])
+
+  @@map("approval_requests")
+}
+
+model Discrepancy {
+  id                  String    @id @default(cuid())
+  purchaseOrderId     String
+  purchaseOrderItemId String?
+  invoiceId           String?
+  type                String    // QUANTITY_MISMATCH, PRICE_MISMATCH, WRONG_ITEM, DAMAGED, MISSING, EXTRA
+  expectedValue       String
+  actualValue         String
+  status              String    @default("OPEN") // OPEN, INVESTIGATING, RESOLVED, ESCALATED
+  reportedById        String
+  resolvedById        String?
+  resolvedAt          DateTime?
+  resolutionNotes     String?
+  photoUrls           String?   // JSON array of URLs
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  purchaseOrder       PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id])
+  purchaseOrderItem   PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id])
+  invoice             Invoice?           @relation(fields: [invoiceId], references: [id])
+  reportedBy          User               @relation("DiscrepancyReporter", fields: [reportedById], references: [id])
+  resolvedBy          User?              @relation("DiscrepancyResolver", fields: [resolvedById], references: [id])
+
+  @@map("discrepancies")
+}
+
+model Shipment {
+  id              String    @id @default(cuid())
+  purchaseOrderId String
+  method          String    // CARRIER, MANUAL
+  carrierName     String?
+  trackingNumber  String?
+  scheduledDate   DateTime?
+  shippedAt       DateTime?
+  deliveredAt     DateTime?
+  podFileUrl      String?
+  podStatus       String    @default("NONE") // NONE, UPLOADED, VERIFIED
+  status          String    @default("PREPARING") // PREPARING, READY, IN_TRANSIT, DELIVERED, FAILED, INVESTIGATING
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  items           ShipmentItem[]
+
+  @@map("shipments")
+}
+
+model ShipmentItem {
+  id                  String @id @default(cuid())
+  shipmentId          String
+  purchaseOrderItemId String
+  quantity            Int
+  boxNumber           Int?
+
+  // Relations
+  shipment            Shipment          @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  purchaseOrderItem   PurchaseOrderItem @relation(fields: [purchaseOrderItemId], references: [id])
+
+  @@map("shipment_items")
+}
+
+model ClientInvoice {
+  id              String    @id @default(cuid())
+  purchaseOrderId String
+  clientId        String
+  shipmentId      String?
+  invoiceNumber   String    @unique
+  totalAmount     Float
+  status          String    @default("DRAFT") // DRAFT, SENT, PAID, OVERDUE, CANCELLED
+  sentAt          DateTime?
+  paidAt          DateTime?
+  dueDate         DateTime?
+  podVerified     Boolean   @default(false)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  client          Client        @relation(fields: [clientId], references: [id])
+
+  @@map("client_invoices")
+}
+
+model SystemSettings {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("system_settings")
 }

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,7 @@ import {
   AlertCircle,
 } from 'lucide-react'
 import { formatDate, formatRelativeTime, debounce } from '@/lib/utils'
+import { CreateRequestDialog } from '@/components/shared/create-request-dialog'
 
 interface Request {
   id: string
@@ -72,6 +74,7 @@ interface RequestsResponse {
 }
 
 export default function RequestsPage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [requests, setRequests] = useState<Request[]>([])
   const [loading, setLoading] = useState(true)
@@ -80,6 +83,7 @@ export default function RequestsPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalRequests, setTotalRequests] = useState(0)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false)
 
   const fetchRequests = async (search: string = '', page: number = 1, status: string = 'all') => {
     try {
@@ -168,6 +172,8 @@ export default function RequestsPage() {
 
   const canManageRequests = session?.user.role && ['ADMIN', 'MANAGER', 'SALES'].includes(session.user.role)
 
+  // NOTE: These counts are from the current page only, not global totals.
+  // For accurate counts, the API would need to return aggregated status counts.
   const statusCounts = {
     new: requests.filter(r => r.status === 'NEW').length,
     assigned: requests.filter(r => r.status === 'ASSIGNED').length,
@@ -187,7 +193,7 @@ export default function RequestsPage() {
           </p>
         </div>
         {canManageRequests && (
-          <Button className="lotus-button">
+          <Button className="lotus-button" onClick={() => setRequestDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             New Request
           </Button>
@@ -311,7 +317,7 @@ export default function RequestsPage() {
                 canManageRequests
                   ? {
                       label: 'Create Request',
-                      onClick: () => console.log('Create request'),
+                      onClick: () => setRequestDialogOpen(true),
                     }
                   : undefined
               }
@@ -333,7 +339,7 @@ export default function RequestsPage() {
                 </TableHeader>
                 <TableBody>
                   {requests.map((request) => (
-                    <TableRow key={request.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={request.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/requests/${request.id}`)}>
                       <TableCell>
                         <div className="flex items-start space-x-3">
                           <span className="text-lg">{getSourceIcon(request.source)}</span>
@@ -429,6 +435,12 @@ export default function RequestsPage() {
           )}
         </CardContent>
       </Card>
+
+      <CreateRequestDialog
+        open={requestDialogOpen}
+        onOpenChange={setRequestDialogOpen}
+        onSuccess={() => fetchRequests(searchQuery, currentPage, statusFilter)}
+      />
     </div>
   )
 }

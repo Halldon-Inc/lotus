@@ -113,6 +113,9 @@ export default function SettingsPage() {
     },
   })
 
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+
   const [formData, setFormData] = useState({
     email: '',
     name: '',
@@ -140,9 +143,90 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchSettings = async () => {
+    try {
+      const response = await fetch('/api/v1/settings')
+      const result = await response.json()
+
+      if (result.success && result.data) {
+        const settingsMap: Record<string, string> = {}
+        for (const s of result.data as { key: string; value: string }[]) {
+          settingsMap[s.key] = s.value
+        }
+
+        setSystemSettings({
+          alertThresholds: {
+            overdueDays: parseInt(settingsMap['alert.overdue_threshold_days'] || '7'),
+            criticalMissingItems: parseInt(settingsMap['alert.missing_item_enabled'] === 'true' ? '3' : '0'),
+            spendingLimitWarning: parseInt(settingsMap['alert.deadline_reminder_days'] || '80'),
+          },
+          workflowConfig: {
+            requireApprovalForOrders: settingsMap['workflow.require_quote_approval'] === 'true',
+            autoAssignRequests: settingsMap['workflow.auto_assign_requests'] === 'true',
+            sendEmailNotifications: settingsMap['integration.email_notifications'] === 'true',
+          },
+          integrationSettings: {
+            hubspotEnabled: settingsMap['integration.hubspot_enabled'] === 'true',
+            emailIntegrationEnabled: settingsMap['integration.email_notifications'] === 'true',
+          },
+        })
+      }
+    } catch (error) {
+      console.error('Error fetching settings:', error)
+    }
+  }
+
+  const saveSettings = async (section: 'alerts' | 'workflow' | 'integrations') => {
+    setSettingsSaving(true)
+    setSettingsMessage(null)
+
+    let settings: { key: string; value: string }[] = []
+
+    if (section === 'alerts') {
+      settings = [
+        { key: 'alert.overdue_threshold_days', value: String(systemSettings.alertThresholds.overdueDays) },
+        { key: 'alert.missing_item_enabled', value: String(systemSettings.alertThresholds.criticalMissingItems > 0) },
+        { key: 'alert.deadline_reminder_days', value: String(systemSettings.alertThresholds.spendingLimitWarning) },
+      ]
+    } else if (section === 'workflow') {
+      settings = [
+        { key: 'workflow.require_quote_approval', value: String(systemSettings.workflowConfig.requireApprovalForOrders) },
+        { key: 'workflow.auto_assign_requests', value: String(systemSettings.workflowConfig.autoAssignRequests) },
+        { key: 'integration.email_notifications', value: String(systemSettings.workflowConfig.sendEmailNotifications) },
+      ]
+    } else if (section === 'integrations') {
+      settings = [
+        { key: 'integration.hubspot_enabled', value: String(systemSettings.integrationSettings.hubspotEnabled) },
+        { key: 'integration.email_notifications', value: String(systemSettings.integrationSettings.emailIntegrationEnabled) },
+      ]
+    }
+
+    try {
+      const response = await fetch('/api/v1/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings }),
+      })
+
+      const result = await response.json()
+      if (result.success) {
+        setSettingsMessage({ text: 'Settings saved successfully', type: 'success' })
+      } else {
+        setSettingsMessage({ text: result.error || 'Failed to save settings', type: 'error' })
+      }
+    } catch (error) {
+      console.error('Error saving settings:', error)
+      setSettingsMessage({ text: 'Error saving settings', type: 'error' })
+    } finally {
+      setSettingsSaving(false)
+      setTimeout(() => setSettingsMessage(null), 3000)
+    }
+  }
+
   useEffect(() => {
-    if (session?.user.role === 'ADMIN') {
+    if (session?.user.role && ['ADMIN', 'MANAGER'].includes(session.user.role)) {
       fetchUsers()
+      fetchSettings()
     }
   }, [session])
 
@@ -235,7 +319,7 @@ export default function SettingsPage() {
     return colors[role] || 'bg-gray-100 text-gray-800'
   }
 
-  if (!session?.user.role || session.user.role !== 'ADMIN') {
+  if (!session?.user.role || !['ADMIN', 'MANAGER'].includes(session.user.role)) {
     return (
       <div className="space-y-6">
         <EmptyState
@@ -461,9 +545,20 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              <Button className="lotus-button">
-                Save Alert Settings
-              </Button>
+              <div className="flex items-center space-x-4">
+                <Button
+                  className="lotus-button"
+                  onClick={() => saveSettings('alerts')}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Alert Settings'}
+                </Button>
+                {settingsMessage && activeTab === 'alerts' && (
+                  <span className={settingsMessage.type === 'success' ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
+                    {settingsMessage.text}
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -522,9 +617,20 @@ export default function SettingsPage() {
                 <Label htmlFor="emailNotifications">Send email notifications</Label>
               </div>
 
-              <Button className="lotus-button">
-                Save Workflow Settings
-              </Button>
+              <div className="flex items-center space-x-4">
+                <Button
+                  className="lotus-button"
+                  onClick={() => saveSettings('workflow')}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Workflow Settings'}
+                </Button>
+                {settingsMessage && activeTab === 'workflow' && (
+                  <span className={settingsMessage.type === 'success' ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
+                    {settingsMessage.text}
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -568,9 +674,20 @@ export default function SettingsPage() {
                 <Label htmlFor="emailIntegration">Enable email integration</Label>
               </div>
 
-              <Button className="lotus-button">
-                Save Integration Settings
-              </Button>
+              <div className="flex items-center space-x-4">
+                <Button
+                  className="lotus-button"
+                  onClick={() => saveSettings('integrations')}
+                  disabled={settingsSaving}
+                >
+                  {settingsSaving ? 'Saving...' : 'Save Integration Settings'}
+                </Button>
+                {settingsMessage && activeTab === 'integrations' && (
+                  <span className={settingsMessage.type === 'success' ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
+                    {settingsMessage.text}
+                  </span>
+                )}
+              </div>
             </div>
           </CardContent>
         </Card>

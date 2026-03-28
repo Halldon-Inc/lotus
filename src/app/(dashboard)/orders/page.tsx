@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -96,6 +97,7 @@ const STATUS_OPTIONS = [
 ]
 
 export default function PurchaseOrdersPage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [orders, setOrders] = useState<PurchaseOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -178,7 +180,7 @@ export default function PurchaseOrdersPage() {
     return statusColors[status] || 'bg-gray-100 text-gray-800'
   }
 
-  const getProgressIcon = (progress: any) => {
+  const getProgressIcon = (progress: PurchaseOrder['itemsProgress']) => {
     if (progress.missing > 0) {
       return <AlertTriangle className="h-4 w-4 text-red-500" />
     }
@@ -208,7 +210,7 @@ export default function PurchaseOrdersPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards (counts from current page only, not global totals) */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
           <CardContent className="p-6">
@@ -327,7 +329,7 @@ export default function PurchaseOrdersPage() {
                 </TableHeader>
                 <TableBody>
                   {orders.map((order) => (
-                    <TableRow key={order.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={order.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/orders/${order.id}`)}>
                       <TableCell>
                         <div className="font-medium">{order.poNumber}</div>
                         {order.discrepancyNotes && (

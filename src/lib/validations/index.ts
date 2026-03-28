@@ -86,9 +86,12 @@ export const createPurchaseOrderSchema = z.object({
 })
 
 export const updatePurchaseOrderSchema = z.object({
-  status: z.enum(['RECEIVED', 'VERIFIED', 'IN_PURCHASING', 'PARTIALLY_FULFILLED', 'FULFILLED', 'DELIVERED']).optional(),
+  status: z.enum(['RECEIVED', 'VERIFIED', 'NEEDS_CORRECTION', 'RESUBMITTED', 'IN_PURCHASING', 'PARTIALLY_FULFILLED', 'FULFILLED', 'DELIVERED']).optional(),
   discrepancyNotes: z.string().optional(),
   verifiedById: z.string().optional(),
+  rejectionReason: z.string().optional(),
+  scheduledDeliveryDate: z.string().optional(),
+  deliveryMethod: z.string().optional(),
 })
 
 // Purchase Order Item validation schemas
@@ -189,6 +192,160 @@ export const fileUploadSchema = z.object({
   size: z.number().positive('File size must be positive'),
 })
 
+// Settings validation schemas
+export const settingsSchema = z.object({
+  settings: z.array(z.object({
+    key: z.string().min(1, 'Key is required'),
+    value: z.string().min(1, 'Value is required'),
+  })).min(1, 'At least one setting is required'),
+})
+
+// Receiving validation schemas
+export const receivingSearchSchema = z.object({
+  q: z.string().min(1, 'Search term is required'),
+})
+
+export const receivingConfirmItemSchema = z.object({
+  id: z.string().min(1, 'Item ID is required'),
+  receivedQuantity: z.number().int().min(0, 'Received quantity cannot be negative'),
+  notes: z.string().optional(),
+})
+
+export const receivingConfirmSchema = z.object({
+  items: z.array(receivingConfirmItemSchema).min(1, 'At least one item is required'),
+})
+
+// Invoice validation schemas
+export const createInvoiceLineItemSchema = z.object({
+  description: z.string().min(1, 'Description is required'),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  unitPrice: z.number().positive('Unit price must be positive'),
+  totalPrice: z.number().positive('Total price must be positive'),
+})
+
+export const createInvoiceSchema = z.object({
+  invoiceNumber: z.string().min(1, 'Invoice number is required').max(100, 'Invoice number too long'),
+  vendorName: z.string().min(1, 'Vendor name is required').max(200, 'Vendor name too long'),
+  totalAmount: z.number().positive('Total amount must be positive'),
+  dueDate: z.string().optional(),
+  fileUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
+  purchaseOrderId: z.string().optional(),
+  notes: z.string().optional(),
+  lineItems: z.array(createInvoiceLineItemSchema).min(1, 'At least one line item is required'),
+})
+
+export const updateInvoiceSchema = z.object({
+  status: z.enum(['PENDING', 'MATCHED', 'PARTIAL', 'DISPUTED', 'PAID']).optional(),
+  vendorName: z.string().min(1, 'Vendor name is required').max(200, 'Vendor name too long').optional(),
+  dueDate: z.string().optional(),
+  fileUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
+  purchaseOrderId: z.string().optional(),
+  notes: z.string().optional(),
+})
+
+// Matching validation schemas
+export const createMatchSchema = z.object({
+  purchaseOrderId: z.string().min(1, 'Purchase order ID is required'),
+  invoiceId: z.string().min(1, 'Invoice ID is required'),
+  tolerancePercent: z.number().min(0, 'Tolerance cannot be negative').max(100, 'Tolerance cannot exceed 100').default(5),
+})
+
+export const updateMatchSchema = z.object({
+  status: z.enum(['AUTO_MATCHED', 'PARTIAL_MATCH', 'MISMATCH', 'MANUAL_OVERRIDE']),
+  notes: z.string().min(1, 'Notes are required for manual override'),
+})
+
+// Approval validation schemas
+export const createApprovalRuleSchema = z.object({
+  name: z.string().min(1, 'Rule name is required').max(200, 'Name too long'),
+  entityType: z.enum(['PURCHASE_ORDER', 'INVOICE', 'REQUEST']),
+  conditionField: z.string().min(1, 'Condition field is required'),
+  conditionOp: z.enum(['gt', 'lt', 'gte', 'lte', 'eq']),
+  conditionValue: z.string().min(1, 'Condition value is required'),
+  approverRole: z.string().optional(),
+  approverUserId: z.string().optional(),
+  priority: z.number().int().min(0).optional(),
+  isActive: z.boolean().optional(),
+})
+
+export const updateApprovalRuleSchema = createApprovalRuleSchema.partial().extend({
+  isActive: z.boolean().optional(),
+})
+
+export const createApprovalRequestSchema = z.object({
+  entityType: z.string().min(1, 'Entity type is required'),
+  entityId: z.string().min(1, 'Entity ID is required'),
+  ruleId: z.string().optional(),
+  notes: z.string().optional(),
+})
+
+export const resolveApprovalSchema = z.object({
+  status: z.enum(['APPROVED', 'REJECTED', 'ESCALATED']),
+  notes: z.string().optional(),
+})
+
+// Discrepancy validation schemas
+export const createDiscrepancySchema = z.object({
+  purchaseOrderId: z.string().min(1, 'Purchase order is required'),
+  purchaseOrderItemId: z.string().optional(),
+  invoiceId: z.string().optional(),
+  type: z.enum(['QUANTITY_MISMATCH', 'PRICE_MISMATCH', 'WRONG_ITEM', 'DAMAGED', 'MISSING', 'EXTRA']),
+  expectedValue: z.string().min(1, 'Expected value is required'),
+  actualValue: z.string().min(1, 'Actual value is required'),
+  photoUrls: z.array(z.string().url('Invalid photo URL')).optional(),
+})
+
+export const updateDiscrepancySchema = z.object({
+  status: z.enum(['OPEN', 'INVESTIGATING', 'RESOLVED', 'ESCALATED']).optional(),
+  resolutionNotes: z.string().optional(),
+  photoUrls: z.array(z.string().url('Invalid photo URL')).optional(),
+})
+
+// Shipment validation schemas
+export const createShipmentItemSchema = z.object({
+  purchaseOrderItemId: z.string().min(1, 'PO item ID is required'),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  boxNumber: z.number().int().positive('Box number must be positive').optional(),
+})
+
+export const createShipmentSchema = z.object({
+  purchaseOrderId: z.string().min(1, 'Purchase order is required'),
+  method: z.enum(['CARRIER', 'MANUAL']),
+  carrierName: z.string().optional(),
+  trackingNumber: z.string().optional(),
+  scheduledDate: z.string().optional(),
+  notes: z.string().optional(),
+  items: z.array(createShipmentItemSchema).min(1, 'At least one item is required'),
+})
+
+export const updateShipmentSchema = z.object({
+  status: z.enum(['PREPARING', 'READY', 'IN_TRANSIT', 'DELIVERED', 'FAILED', 'INVESTIGATING']).optional(),
+  carrierName: z.string().optional(),
+  trackingNumber: z.string().optional(),
+  scheduledDate: z.string().optional(),
+  notes: z.string().optional(),
+})
+
+export const uploadPodSchema = z.object({
+  podFileUrl: z.string().url('Invalid POD file URL'),
+  deliveredAt: z.string().optional(),
+})
+
+// Client invoice validation schemas
+export const createClientInvoiceSchema = z.object({
+  purchaseOrderId: z.string().min(1, 'Purchase order is required'),
+  shipmentId: z.string().optional(),
+  dueDate: z.string().optional(),
+  notes: z.string().optional(),
+})
+
+export const updateClientInvoiceSchema = z.object({
+  status: z.enum(['DRAFT', 'SENT', 'PAID', 'OVERDUE', 'CANCELLED']).optional(),
+  dueDate: z.string().optional(),
+  notes: z.string().optional(),
+  podVerified: z.boolean().optional(),
+})
+
 // Utility validation functions
 export function validateEmail(email: string): boolean {
   return z.string().email().safeParse(email).success
@@ -228,3 +385,22 @@ export type CreateAlertInput = z.infer<typeof createAlertSchema>
 export type CreateNoteInput = z.infer<typeof createNoteSchema>
 export type SearchInput = z.infer<typeof searchSchema>
 export type PaginationInput = z.infer<typeof paginationSchema>
+export type SettingsInput = z.infer<typeof settingsSchema>
+export type ReceivingSearchInput = z.infer<typeof receivingSearchSchema>
+export type ReceivingConfirmInput = z.infer<typeof receivingConfirmSchema>
+export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>
+export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>
+export type CreateInvoiceLineItemInput = z.infer<typeof createInvoiceLineItemSchema>
+export type CreateMatchInput = z.infer<typeof createMatchSchema>
+export type UpdateMatchInput = z.infer<typeof updateMatchSchema>
+export type CreateApprovalRuleInput = z.infer<typeof createApprovalRuleSchema>
+export type UpdateApprovalRuleInput = z.infer<typeof updateApprovalRuleSchema>
+export type CreateApprovalRequestInput = z.infer<typeof createApprovalRequestSchema>
+export type ResolveApprovalInput = z.infer<typeof resolveApprovalSchema>
+export type CreateDiscrepancyInput = z.infer<typeof createDiscrepancySchema>
+export type UpdateDiscrepancyInput = z.infer<typeof updateDiscrepancySchema>
+export type CreateShipmentInput = z.infer<typeof createShipmentSchema>
+export type UpdateShipmentInput = z.infer<typeof updateShipmentSchema>
+export type UploadPodInput = z.infer<typeof uploadPodSchema>
+export type CreateClientInvoiceInput = z.infer<typeof createClientInvoiceSchema>
+export type UpdateClientInvoiceInput = z.infer<typeof updateClientInvoiceSchema>

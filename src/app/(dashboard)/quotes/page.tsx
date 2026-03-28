@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,6 +30,7 @@ import {
   Send,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatRelativeTime, debounce } from '@/lib/utils'
+import { CreateQuoteDialog } from '@/components/shared/create-quote-dialog'
 
 interface Quote {
   id: string
@@ -75,6 +77,7 @@ interface QuotesResponse {
 }
 
 export default function QuotesPage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [quotes, setQuotes] = useState<Quote[]>([])
   const [loading, setLoading] = useState(true)
@@ -83,6 +86,7 @@ export default function QuotesPage() {
   const [totalPages, setTotalPages] = useState(1)
   const [totalQuotes, setTotalQuotes] = useState(0)
   const [statusFilter, setStatusFilter] = useState('all')
+  const [quoteDialogOpen, setQuoteDialogOpen] = useState(false)
 
   const fetchQuotes = async (search: string = '', page: number = 1, status: string = 'all') => {
     try {
@@ -155,6 +159,8 @@ export default function QuotesPage() {
 
   const canManageQuotes = session?.user.role && ['ADMIN', 'MANAGER', 'SALES'].includes(session.user.role)
 
+  // NOTE: These counts are from the current page only, not global totals.
+  // For accurate counts, the API would need to return aggregated status counts.
   const statusCounts = {
     draft: quotes.filter(q => q.status === 'DRAFT').length,
     sent: quotes.filter(q => q.status === 'SENT').length,
@@ -179,7 +185,7 @@ export default function QuotesPage() {
           </p>
         </div>
         {canManageQuotes && (
-          <Button className="lotus-button">
+          <Button className="lotus-button" onClick={() => setQuoteDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Create Quote
           </Button>
@@ -344,7 +350,7 @@ export default function QuotesPage() {
                 canManageQuotes
                   ? {
                       label: 'Create Quote',
-                      onClick: () => console.log('Create quote'),
+                      onClick: () => setQuoteDialogOpen(true),
                     }
                   : undefined
               }
@@ -366,7 +372,7 @@ export default function QuotesPage() {
                 </TableHeader>
                 <TableBody>
                   {quotes.map((quote) => (
-                    <TableRow key={quote.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={quote.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/quotes/${quote.id}`)}>
                       <TableCell>
                         <div>
                           <div className="font-medium font-mono">{quote.quoteNumber}</div>
@@ -468,6 +474,12 @@ export default function QuotesPage() {
           )}
         </CardContent>
       </Card>
+
+      <CreateQuoteDialog
+        open={quoteDialogOpen}
+        onOpenChange={setQuoteDialogOpen}
+        onSuccess={() => fetchQuotes(searchQuery, currentPage, statusFilter)}
+      />
     </div>
   )
 }

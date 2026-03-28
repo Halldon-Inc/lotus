@@ -125,6 +125,17 @@ export async function PATCH(
     // Check if purchase order exists
     const existingPO = await prisma.purchaseOrder.findUnique({
       where: { id },
+      include: {
+        quote: {
+          select: {
+            request: {
+              select: {
+                assignedToId: true,
+              },
+            },
+          },
+        },
+      },
     })
 
     if (!existingPO) {
@@ -134,13 +145,45 @@ export async function PATCH(
       )
     }
 
+    // NEEDS_CORRECTION requires a rejectionReason
+    if (data.status === 'NEEDS_CORRECTION' && !data.rejectionReason) {
+      return NextResponse.json(
+        { success: false, error: 'rejectionReason is required when setting status to NEEDS_CORRECTION' },
+        { status: 400 }
+      )
+    }
+
+    // Build update payload
+    const updateData: Record<string, unknown> = {}
+    if (data.status !== undefined) updateData.status = data.status
+    if (data.discrepancyNotes !== undefined) updateData.discrepancyNotes = data.discrepancyNotes
+    if (data.rejectionReason !== undefined) updateData.rejectionReason = data.rejectionReason
+    if (data.scheduledDeliveryDate !== undefined) {
+      updateData.scheduledDeliveryDate = data.scheduledDeliveryDate ? new Date(data.scheduledDeliveryDate) : null
+    }
+    if (data.deliveryMethod !== undefined) updateData.deliveryMethod = data.deliveryMethod
+
+    // Auto-set verifiedById when VERIFIED
+    if (data.status === 'VERIFIED') {
+      updateData.verifiedById = data.verifiedById || session.user.id
+    } else if (data.verifiedById) {
+      updateData.verifiedById = data.verifiedById
+    }
+
+    // Increment rejectionCount on NEEDS_CORRECTION
+    if (data.status === 'NEEDS_CORRECTION') {
+      updateData.rejectionCount = (existingPO.rejectionCount || 0) + 1
+    }
+
+    // RESUBMITTED moves PO back to RECEIVED
+    if (data.status === 'RESUBMITTED') {
+      updateData.status = 'RECEIVED'
+      updateData.rejectionReason = null
+    }
+
     const purchaseOrder = await prisma.purchaseOrder.update({
       where: { id },
-      data: {
-        status: data.status,
-        discrepancyNotes: data.discrepancyNotes,
-        verifiedById: data.verifiedById || (data.status === 'VERIFIED' ? session.user.id : existingPO.verifiedById),
-      },
+      data: updateData,
       include: {
         client: {
           select: {
@@ -166,19 +209,74 @@ export async function PATCH(
     })
 
     // Log activity
+    const action = data.status && data.status !== existingPO.status ? 'status_changed' : 'updated'
     await prisma.activityLog.create({
       data: {
         userId: session.user.id,
         entityType: 'purchaseOrder',
         entityId: purchaseOrder.id,
-        action: 'updated',
+        action,
         details: JSON.stringify({
           poNumber: purchaseOrder.poNumber,
           changes: Object.keys(data),
-          newStatus: data.status,
+          ...(data.status ? { previousStatus: existingPO.status, newStatus: data.status } : {}),
+          ...(data.rejectionReason ? { rejectionReason: data.rejectionReason } : {}),
         }),
       },
     })
+
+    // Auto-alert: NEEDS_CORRECTION notifies the assigned sales rep
+    if (data.status === 'NEEDS_CORRECTION') {
+      const assignedSalesRepId = existingPO.quote?.request?.assignedToId
+      if (assignedSalesRepId) {
+        await prisma.activityLog.create({
+          data: {
+            userId: session.user.id,
+            entityType: 'alert',
+            entityId: purchaseOrder.id,
+            action: 'po_needs_correction',
+            details: JSON.stringify({
+              type: 'WARNING',
+              targetUserId: assignedSalesRepId,
+              poNumber: purchaseOrder.poNumber,
+              rejectionReason: data.rejectionReason,
+              rejectionCount: purchaseOrder.rejectionCount,
+              message: `PO ${purchaseOrder.poNumber} needs correction: ${data.rejectionReason}`,
+            }),
+          },
+        })
+      }
+    }
+
+    // Auto-alert: VERIFIED notifies all PROCUREMENT role users
+    if (data.status === 'VERIFIED' && existingPO.status !== 'VERIFIED') {
+      const procurementUsers = await prisma.user.findMany({
+        where: { role: 'PROCUREMENT' },
+        select: { id: true },
+      })
+
+      if (procurementUsers.length > 0) {
+        await Promise.all(
+          procurementUsers.map((user) =>
+            prisma.activityLog.create({
+              data: {
+                userId: session.user.id,
+                entityType: 'alert',
+                entityId: purchaseOrder.id,
+                action: 'po_verified_ready',
+                details: JSON.stringify({
+                  type: 'INFO',
+                  targetUserId: user.id,
+                  poNumber: purchaseOrder.poNumber,
+                  clientName: purchaseOrder.client.name,
+                  message: `PO ${purchaseOrder.poNumber} has been verified and is ready for procurement`,
+                }),
+              },
+            })
+          )
+        )
+      }
+    }
 
     return NextResponse.json({
       success: true,

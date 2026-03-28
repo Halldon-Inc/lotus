@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -27,6 +28,7 @@ import {
   MapPin,
 } from 'lucide-react'
 import { formatCurrency, formatDate, debounce } from '@/lib/utils'
+import { CreateClientDialog } from '@/components/shared/create-client-dialog'
 
 interface Client {
   id: string
@@ -64,6 +66,7 @@ interface ClientsResponse {
 }
 
 export default function ClientsPage() {
+  const router = useRouter()
   const { data: session } = useSession()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,6 +74,7 @@ export default function ClientsPage() {
   const [currentPage, setCurrentPage] = useState(1)
   const [totalPages, setTotalPages] = useState(1)
   const [totalClients, setTotalClients] = useState(0)
+  const [clientDialogOpen, setClientDialogOpen] = useState(false)
 
   const fetchClients = async (search: string = '', page: number = 1) => {
     try {
@@ -153,7 +157,7 @@ export default function ClientsPage() {
           </p>
         </div>
         {canManageClients && (
-          <Button className="lotus-button">
+          <Button className="lotus-button" onClick={() => setClientDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Client
           </Button>
@@ -178,8 +182,10 @@ export default function ClientsPage() {
             <div className="flex items-center space-x-2">
               <Building2 className="h-5 w-5 text-primary" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Active This Month</p>
-                <p className="text-2xl font-bold">{Math.floor(totalClients * 0.7)}</p>
+                <p className="text-sm font-medium text-muted-foreground">With Requests</p>
+                <p className="text-2xl font-bold">
+                  {clients.filter(c => c._count.requests > 0).length}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -190,7 +196,9 @@ export default function ClientsPage() {
               <MapPin className="h-5 w-5 text-primary" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Regions</p>
-                <p className="text-2xl font-bold">5</p>
+                <p className="text-2xl font-bold">
+                  {new Set(clients.map(c => c.state).filter(Boolean)).size}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -235,7 +243,7 @@ export default function ClientsPage() {
                 canManageClients
                   ? {
                       label: 'Add Client',
-                      onClick: () => console.log('Add client'),
+                      onClick: () => setClientDialogOpen(true),
                     }
                   : undefined
               }
@@ -256,7 +264,7 @@ export default function ClientsPage() {
                 </TableHeader>
                 <TableBody>
                   {clients.map((client) => (
-                    <TableRow key={client.id} className="cursor-pointer hover:bg-muted/50">
+                    <TableRow key={client.id} className="cursor-pointer hover:bg-muted/50" onClick={() => router.push(`/clients/${client.id}`)}>
                       <TableCell>
                         <div className="flex items-center space-x-3">
                           <span className="text-lg">{getClientTypeIcon(client.type)}</span>
@@ -365,6 +373,12 @@ export default function ClientsPage() {
           )}
         </CardContent>
       </Card>
+
+      <CreateClientDialog
+        open={clientDialogOpen}
+        onOpenChange={setClientDialogOpen}
+        onSuccess={() => fetchClients(searchQuery, currentPage)}
+      />
     </div>
   )
 }
