@@ -8,69 +8,46 @@ const globalForPrisma = globalThis as unknown as {
 
 const isProduction = process.env.NODE_ENV === 'production'
 
-function getDbUrl(): string {
-  const isVercel = !!process.env.VERCEL
-  
-  if (isVercel || isProduction) {
+function initDb(): string {
+  // In production/Vercel: always use /tmp (only writable dir)
+  if (isProduction || process.env.VERCEL) {
     const tmpDb = '/tmp/dev.db'
-    
+
     if (!fs.existsSync(tmpDb)) {
+      // The build copies dev.db to prisma/ which gets bundled
       const cwd = process.cwd()
-      const candidates = [
+      const sources = [
         path.join(cwd, 'prisma', 'dev.db'),
         path.join(cwd, '.next', 'server', 'prisma-dev.db'),
-        path.join(__dirname, '..', '..', 'prisma', 'dev.db'),
-        path.join(__dirname, '..', '..', '..', 'prisma', 'dev.db'),
-        path.join(__dirname, 'prisma-dev.db'),
         '/var/task/prisma/dev.db',
         '/var/task/.next/server/prisma-dev.db',
       ]
-      
-      let found = false
-      for (const src of candidates) {
+
+      for (const src of sources) {
         try {
           if (fs.existsSync(src)) {
             fs.copyFileSync(src, tmpDb)
-            console.log(`[db] Copied SQLite DB from ${src} to ${tmpDb}`)
-            found = true
             break
           }
-        } catch (e) {
-          console.log(`[db] Failed to check/copy ${src}: ${e}`)
-        }
-      }
-      
-      if (!found) {
-        console.error(`[db] Could not find SQLite DB. cwd=${cwd}, __dirname=${__dirname}`)
-        try {
-          const cwdFiles = fs.readdirSync(cwd)
-          console.error(`[db] Files in cwd: ${cwdFiles.join(', ')}`)
-          if (fs.existsSync(path.join(cwd, 'prisma'))) {
-            const prismaFiles = fs.readdirSync(path.join(cwd, 'prisma'))
-            console.error(`[db] Files in prisma/: ${prismaFiles.join(', ')}`)
-          }
-        } catch (e) {
-          console.error(`[db] Could not list files: ${e}`)
-        }
+        } catch {}
       }
     }
-    
+
     return `file:${tmpDb}`
   }
-  
+
+  // Dev: use DATABASE_URL or default
   return process.env.DATABASE_URL || 'file:./dev.db'
 }
 
-const dbUrl = getDbUrl()
+const dbUrl = initDb()
 
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
     log: isProduction ? [] : ['query'],
     datasources: {
-      db: {
-        url: dbUrl,
-      },
+      db: { url: dbUrl },
     },
   })
 
