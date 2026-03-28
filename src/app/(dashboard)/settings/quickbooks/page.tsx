@@ -20,6 +20,9 @@ import {
   Info,
   Unplug,
   Link2,
+  Download,
+  AlertTriangle,
+  Package,
 } from 'lucide-react'
 import {
   Dialog,
@@ -47,6 +50,21 @@ interface SyncResult {
 
 type SyncTarget = 'customers' | 'bills' | 'invoices' | 'full'
 
+type ImportTarget = 'customers' | 'vendors' | 'invoices'
+
+interface ImportResult {
+  success: boolean
+  message: string
+  details?: {
+    imported?: number
+    updated?: number
+    skipped?: number
+    count?: number
+    vendors?: string[]
+    errors?: string[]
+  }
+}
+
 export default function QuickBooksSettingsPage() {
   const { data: session } = useSession()
   const [status, setStatus] = useState<QBStatus | null>(null)
@@ -68,6 +86,17 @@ export default function QuickBooksSettingsPage() {
 
   const [disconnectDialogOpen, setDisconnectDialogOpen] = useState(false)
   const [disconnecting, setDisconnecting] = useState(false)
+
+  const [importLoading, setImportLoading] = useState<Record<ImportTarget, boolean>>({
+    customers: false,
+    vendors: false,
+    invoices: false,
+  })
+  const [importResults, setImportResults] = useState<Record<ImportTarget, ImportResult | null>>({
+    customers: null,
+    vendors: null,
+    invoices: null,
+  })
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -158,6 +187,58 @@ export default function QuickBooksSettingsPage() {
       setSyncLoading((prev) => ({ ...prev, [target]: false }))
     }
   }
+
+  const handleImport = async (target: ImportTarget) => {
+    const endpoint = `/api/v1/quickbooks/import/${target}`
+
+    setImportLoading((prev) => ({ ...prev, [target]: true }))
+    setImportResults((prev) => ({ ...prev, [target]: null }))
+
+    try {
+      const response = await fetch(endpoint, { method: 'POST' })
+      const result = await response.json()
+
+      if (result.success) {
+        const data = result.data || {}
+        let message = 'Import completed'
+
+        if (target === 'customers') {
+          const parts: string[] = []
+          if (data.imported) parts.push(`${data.imported} imported`)
+          if (data.updated) parts.push(`${data.updated} updated`)
+          if (data.skipped) parts.push(`${data.skipped} skipped`)
+          message = parts.length > 0 ? parts.join(', ') : 'No new customers found'
+        } else if (target === 'vendors') {
+          message = `Found ${data.count || 0} vendors`
+        } else if (target === 'invoices') {
+          const parts: string[] = []
+          if (data.imported) parts.push(`${data.imported} imported`)
+          if (data.updated) parts.push(`${data.updated} updated`)
+          if (data.skipped) parts.push(`${data.skipped} skipped`)
+          message = parts.length > 0 ? parts.join(', ') : 'No new invoices found'
+        }
+
+        setImportResults((prev) => ({
+          ...prev,
+          [target]: { success: true, message, details: data },
+        }))
+      } else {
+        setImportResults((prev) => ({
+          ...prev,
+          [target]: { success: false, message: result.error || 'Import failed' },
+        }))
+      }
+    } catch {
+      setImportResults((prev) => ({
+        ...prev,
+        [target]: { success: false, message: 'Network error during import' },
+      }))
+    } finally {
+      setImportLoading((prev) => ({ ...prev, [target]: false }))
+    }
+  }
+
+  const anyImportRunning = Object.values(importLoading).some(Boolean)
 
   const formatLastSync = (dateString?: string) => {
     if (!dateString) return 'Never'
@@ -434,6 +515,167 @@ export default function QuickBooksSettingsPage() {
                     {syncResults.full.message}
                   </p>
                 )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Import from QuickBooks (only when connected) */}
+      {status?.connected && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Download className="h-5 w-5" />
+              Import from QuickBooks
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* Warning banner */}
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div className="text-sm text-amber-800">
+                  <p className="font-medium">This will import records from QuickBooks into Lotus.</p>
+                  <p className="mt-1 text-amber-700">
+                    Existing Lotus records matched by name or QuickBooks ID will be updated.
+                    New records will be created.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* Import Customers */}
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5" style={{ color: '#2CA01C' }} />
+                    <span className="font-medium">Customers</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pull customers from QuickBooks into Lotus clients
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleImport('customers')}
+                    disabled={importLoading.customers || anyImportRunning}
+                  >
+                    {importLoading.customers ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Import Customers
+                  </Button>
+                  {importResults.customers && (
+                    <div>
+                      <p className={`text-xs ${importResults.customers.success ? 'text-green-600' : 'text-red-600'}`}>
+                        {importResults.customers.message}
+                      </p>
+                      {importResults.customers.details?.errors && importResults.customers.details.errors.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer">
+                            {importResults.customers.details.errors.length} error(s)
+                          </summary>
+                          <ul className="mt-1 space-y-1">
+                            {importResults.customers.details.errors.map((e, i) => (
+                              <li key={i} className="text-xs text-red-500">{e}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Import Vendors */}
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="h-5 w-5" style={{ color: '#2CA01C' }} />
+                    <span className="font-medium">Vendors</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pull vendor list from QuickBooks for reference
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleImport('vendors')}
+                    disabled={importLoading.vendors || anyImportRunning}
+                  >
+                    {importLoading.vendors ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Import Vendors
+                  </Button>
+                  {importResults.vendors && (
+                    <div>
+                      <p className={`text-xs ${importResults.vendors.success ? 'text-green-600' : 'text-red-600'}`}>
+                        {importResults.vendors.message}
+                      </p>
+                      {importResults.vendors.details?.vendors && importResults.vendors.details.vendors.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer">
+                            View {importResults.vendors.details.vendors.length} vendor(s)
+                          </summary>
+                          <ul className="mt-1 space-y-1">
+                            {importResults.vendors.details.vendors.map((v, i) => (
+                              <li key={i} className="text-xs text-foreground">{v}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Import Invoices */}
+                <div className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" style={{ color: '#2CA01C' }} />
+                    <span className="font-medium">Invoices</span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Pull invoices from QuickBooks into Lotus
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => handleImport('invoices')}
+                    disabled={importLoading.invoices || anyImportRunning}
+                  >
+                    {importLoading.invoices ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="mr-2 h-4 w-4" />
+                    )}
+                    Import Invoices
+                  </Button>
+                  {importResults.invoices && (
+                    <div>
+                      <p className={`text-xs ${importResults.invoices.success ? 'text-green-600' : 'text-red-600'}`}>
+                        {importResults.invoices.message}
+                      </p>
+                      {importResults.invoices.details?.errors && importResults.invoices.details.errors.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer">
+                            {importResults.invoices.details.errors.length} error(s)
+                          </summary>
+                          <ul className="mt-1 space-y-1">
+                            {importResults.invoices.details.errors.map((e, i) => (
+                              <li key={i} className="text-xs text-red-500">{e}</li>
+                            ))}
+                          </ul>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>

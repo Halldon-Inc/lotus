@@ -17,12 +17,32 @@ import {
   Info,
   Zap,
   ArrowRight,
+  Users,
+  Building2,
+  Handshake,
+  AlertTriangle,
+  Download,
 } from 'lucide-react'
 
 interface HubSpotStatus {
   connected: boolean
   portalId?: string
   lastSyncAt?: string
+}
+
+interface ImportResultData {
+  imported: number
+  updated?: number
+  skipped: number
+  errors: Array<{ hubspotId: string; name: string; error: string }>
+}
+
+type ImportType = 'contacts' | 'companies' | 'deals'
+
+interface ImportState {
+  loading: boolean
+  result: ImportResultData | null
+  error: string | null
 }
 
 export default function HubSpotSettingsPage() {
@@ -33,6 +53,12 @@ export default function HubSpotSettingsPage() {
 
   const [syncing, setSyncing] = useState(false)
   const [syncResult, setSyncResult] = useState<{ success: boolean; message: string } | null>(null)
+
+  const [importStates, setImportStates] = useState<Record<ImportType, ImportState>>({
+    contacts: { loading: false, result: null, error: null },
+    companies: { loading: false, result: null, error: null },
+    deals: { loading: false, result: null, error: null },
+  })
 
   const fetchStatus = useCallback(async () => {
     try {
@@ -83,6 +109,35 @@ export default function HubSpotSettingsPage() {
       })
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleImport = async (type: ImportType) => {
+    setImportStates(prev => ({
+      ...prev,
+      [type]: { loading: true, result: null, error: null },
+    }))
+
+    try {
+      const response = await fetch(`/api/v1/hubspot/import/${type}`, { method: 'POST' })
+      const data = await response.json()
+
+      if (data.success) {
+        setImportStates(prev => ({
+          ...prev,
+          [type]: { loading: false, result: data.data, error: null },
+        }))
+      } else {
+        setImportStates(prev => ({
+          ...prev,
+          [type]: { loading: false, result: null, error: data.error || 'Import failed' },
+        }))
+      }
+    } catch {
+      setImportStates(prev => ({
+        ...prev,
+        [type]: { loading: false, result: null, error: 'Network error during import' },
+      }))
     }
   }
 
@@ -232,6 +287,149 @@ export default function HubSpotSettingsPage() {
                     {syncResult.message}
                   </span>
                 )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Import from HubSpot (only when connected) */}
+      {status?.connected && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Download className="h-5 w-5" style={{ color: '#FF7A59' }} />
+              <CardTitle className="text-lg">Import from HubSpot</CardTitle>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-5">
+              {/* Warning banner */}
+              <div
+                className="flex items-start gap-3 rounded-lg border p-4"
+                style={{ backgroundColor: '#FFF8F0', borderColor: '#FFD4C8' }}
+              >
+                <AlertTriangle className="h-5 w-5 mt-0.5 shrink-0" style={{ color: '#FF7A59' }} />
+                <p className="text-sm" style={{ color: '#7A3B2E' }}>
+                  This will create or update records in Lotus based on your HubSpot data.
+                  Existing records matched by HubSpot ID or email will be updated without overwriting non-empty fields.
+                </p>
+              </div>
+
+              {/* Import buttons */}
+              <div className="grid gap-4 sm:grid-cols-3">
+                {/* Import Contacts */}
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 font-semibold border-2 hover:border-[#FF7A59] hover:text-[#FF7A59]"
+                    onClick={() => handleImport('contacts')}
+                    disabled={importStates.contacts.loading}
+                  >
+                    {importStates.contacts.loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Users className="h-4 w-4" />
+                    )}
+                    Import Contacts
+                  </Button>
+                  {importStates.contacts.result && (
+                    <div className="rounded-md bg-green-50 border border-green-200 p-3 text-xs space-y-1">
+                      <p className="font-medium text-green-800">
+                        {importStates.contacts.result.imported} imported,{' '}
+                        {importStates.contacts.result.updated ?? 0} updated
+                      </p>
+                      {importStates.contacts.result.skipped > 0 && (
+                        <p className="text-green-700">
+                          {importStates.contacts.result.skipped} skipped
+                        </p>
+                      )}
+                      {importStates.contacts.result.errors.length > 0 && (
+                        <p className="text-amber-700">
+                          {importStates.contacts.result.errors.length} errors
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {importStates.contacts.error && (
+                    <p className="text-xs text-red-600">{importStates.contacts.error}</p>
+                  )}
+                </div>
+
+                {/* Import Companies */}
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 font-semibold border-2 hover:border-[#FF7A59] hover:text-[#FF7A59]"
+                    onClick={() => handleImport('companies')}
+                    disabled={importStates.companies.loading}
+                  >
+                    {importStates.companies.loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Building2 className="h-4 w-4" />
+                    )}
+                    Import Companies
+                  </Button>
+                  {importStates.companies.result && (
+                    <div className="rounded-md bg-green-50 border border-green-200 p-3 text-xs space-y-1">
+                      <p className="font-medium text-green-800">
+                        {importStates.companies.result.imported} imported,{' '}
+                        {importStates.companies.result.updated ?? 0} updated
+                      </p>
+                      {importStates.companies.result.skipped > 0 && (
+                        <p className="text-green-700">
+                          {importStates.companies.result.skipped} skipped
+                        </p>
+                      )}
+                      {importStates.companies.result.errors.length > 0 && (
+                        <p className="text-amber-700">
+                          {importStates.companies.result.errors.length} errors
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {importStates.companies.error && (
+                    <p className="text-xs text-red-600">{importStates.companies.error}</p>
+                  )}
+                </div>
+
+                {/* Import Deals */}
+                <div className="space-y-3">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 font-semibold border-2 hover:border-[#FF7A59] hover:text-[#FF7A59]"
+                    onClick={() => handleImport('deals')}
+                    disabled={importStates.deals.loading}
+                  >
+                    {importStates.deals.loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Handshake className="h-4 w-4" />
+                    )}
+                    Import Deals
+                  </Button>
+                  {importStates.deals.result && (
+                    <div className="rounded-md bg-green-50 border border-green-200 p-3 text-xs space-y-1">
+                      <p className="font-medium text-green-800">
+                        {importStates.deals.result.imported} imported as requests
+                      </p>
+                      {importStates.deals.result.skipped > 0 && (
+                        <p className="text-green-700">
+                          {importStates.deals.result.skipped} skipped (already imported)
+                        </p>
+                      )}
+                      {importStates.deals.result.errors.length > 0 && (
+                        <p className="text-amber-700">
+                          {importStates.deals.result.errors.length} errors
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {importStates.deals.error && (
+                    <p className="text-xs text-red-600">{importStates.deals.error}</p>
+                  )}
+                </div>
               </div>
             </div>
           </CardContent>

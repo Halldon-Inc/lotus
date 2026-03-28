@@ -28,6 +28,7 @@ import {
   GitCompare,
   CheckSquare,
   AlertTriangle,
+  Upload,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -148,6 +149,12 @@ const navigationItems = [
     href: '/alerts',
     icon: Bell,
     roles: ['ADMIN', 'MANAGER', 'SALES', 'PROCUREMENT', 'OPERATIONS'],
+  },
+  {
+    label: 'Import Data',
+    href: '/import',
+    icon: Upload,
+    roles: ['ADMIN', 'MANAGER'],
   },
   {
     label: 'Settings',

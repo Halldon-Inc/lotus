@@ -16,6 +16,7 @@ interface HubSpotDealProperties {
 interface HubSpotDeal {
   id: string
   properties: HubSpotDealProperties
+  associations?: Record<string, { results: Array<{ id: string; type: string }> }>
 }
 
 interface HubSpotSearchResult {
@@ -26,6 +27,46 @@ interface HubSpotSearchResult {
 interface HubSpotNote {
   id: string
   properties: Record<string, string>
+}
+
+export interface HubSpotContact {
+  id: string
+  properties: {
+    firstname?: string
+    lastname?: string
+    email?: string
+    phone?: string
+    company?: string
+    address?: string
+    city?: string
+    state?: string
+    zip?: string
+    [key: string]: string | undefined
+  }
+}
+
+export interface HubSpotCompany {
+  id: string
+  properties: {
+    name?: string
+    domain?: string
+    phone?: string
+    address?: string
+    city?: string
+    state?: string
+    zip?: string
+    industry?: string
+    [key: string]: string | undefined
+  }
+}
+
+interface HubSpotPaginatedResponse<T> {
+  results: T[]
+  paging?: {
+    next?: {
+      after: string
+    }
+  }
 }
 
 async function hubspotFetch<T>(
@@ -174,6 +215,105 @@ export async function getDeal(
 
   return hubspotFetch<HubSpotDeal>(
     `/crm/v3/objects/deals/${dealId}`
+  )
+}
+
+/**
+ * Paginate through all results from a HubSpot list endpoint.
+ */
+export async function getAllPaginated<T>(
+  fetchFn: (limit: number, after?: string) => Promise<HubSpotPaginatedResponse<T> | null>
+): Promise<T[]> {
+  const allResults: T[] = []
+  let after: string | undefined
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const response = await fetchFn(100, after)
+    if (!response) break
+
+    allResults.push(...response.results)
+
+    if (response.paging?.next?.after) {
+      after = response.paging.next.after
+    } else {
+      break
+    }
+  }
+
+  return allResults
+}
+
+/**
+ * Get contacts from HubSpot with pagination support.
+ */
+export async function getContacts(
+  limit: number = 100,
+  after?: string
+): Promise<HubSpotPaginatedResponse<HubSpotContact> | null> {
+  const token = getAccessToken()
+  if (!token) {
+    logSkipped('getContacts', 'no HUBSPOT_ACCESS_TOKEN configured')
+    return null
+  }
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    properties: 'firstname,lastname,email,phone,company,address,city,state,zip',
+  })
+  if (after) params.set('after', after)
+
+  return hubspotFetch<HubSpotPaginatedResponse<HubSpotContact>>(
+    `/crm/v3/objects/contacts?${params.toString()}`
+  )
+}
+
+/**
+ * Get companies from HubSpot with pagination support.
+ */
+export async function getCompanies(
+  limit: number = 100,
+  after?: string
+): Promise<HubSpotPaginatedResponse<HubSpotCompany> | null> {
+  const token = getAccessToken()
+  if (!token) {
+    logSkipped('getCompanies', 'no HUBSPOT_ACCESS_TOKEN configured')
+    return null
+  }
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    properties: 'name,domain,phone,address,city,state,zip,industry',
+  })
+  if (after) params.set('after', after)
+
+  return hubspotFetch<HubSpotPaginatedResponse<HubSpotCompany>>(
+    `/crm/v3/objects/companies?${params.toString()}`
+  )
+}
+
+/**
+ * Get deals from HubSpot with pagination support.
+ */
+export async function getDeals(
+  limit: number = 100,
+  after?: string
+): Promise<HubSpotPaginatedResponse<HubSpotDeal> | null> {
+  const token = getAccessToken()
+  if (!token) {
+    logSkipped('getDeals', 'no HUBSPOT_ACCESS_TOKEN configured')
+    return null
+  }
+
+  const params = new URLSearchParams({
+    limit: String(limit),
+    properties: 'dealname,dealstage,amount,closedate,pipeline',
+    associations: 'companies',
+  })
+  if (after) params.set('after', after)
+
+  return hubspotFetch<HubSpotPaginatedResponse<HubSpotDeal>>(
+    `/crm/v3/objects/deals?${params.toString()}`
   )
 }
 

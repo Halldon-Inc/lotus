@@ -64,6 +64,29 @@ interface QBInvoiceLine {
   Description?: string
 }
 
+interface QBInvoiceRecord {
+  Id: string
+  DocNumber?: string
+  TotalAmt: number
+  Balance?: number
+  DueDate?: string
+  TxnDate?: string
+  EmailStatus?: string
+  CustomerRef?: { value: string; name?: string }
+  Line?: QBInvoiceLine[]
+}
+
+interface QBBillRecord {
+  Id: string
+  DocNumber?: string
+  TotalAmt: number
+  Balance?: number
+  DueDate?: string
+  TxnDate?: string
+  VendorRef?: { value: string; name?: string }
+  Line?: QBBillLine[]
+}
+
 interface QBQueryResponse<T> {
   QueryResponse: {
     [key: string]: T[] | number | undefined
@@ -442,6 +465,74 @@ export class QuickBooksClient {
       invoicePayload
     )
     return data.Invoice.Id
+  }
+
+  /**
+   * Query all customers from QuickBooks.
+   */
+  async getCustomers(limit = 100, offset = 1): Promise<QBCustomer[]> {
+    const query = `select * from Customer startposition ${offset} maxresults ${limit}`
+    const data = await this.makeRequest<QBQueryResponse<QBCustomer>>(
+      'GET',
+      `query?query=${encodeURIComponent(query)}`
+    )
+    return (data.QueryResponse?.Customer as QBCustomer[] | undefined) || []
+  }
+
+  /**
+   * Query all vendors from QuickBooks.
+   */
+  async getVendors(limit = 100, offset = 1): Promise<QBVendor[]> {
+    const query = `select * from Vendor startposition ${offset} maxresults ${limit}`
+    const data = await this.makeRequest<QBQueryResponse<QBVendor>>(
+      'GET',
+      `query?query=${encodeURIComponent(query)}`
+    )
+    return (data.QueryResponse?.Vendor as QBVendor[] | undefined) || []
+  }
+
+  /**
+   * Query all invoices from QuickBooks.
+   */
+  async getInvoicesFromQB(limit = 100, offset = 1): Promise<QBInvoiceRecord[]> {
+    const query = `select * from Invoice startposition ${offset} maxresults ${limit}`
+    const data = await this.makeRequest<QBQueryResponse<QBInvoiceRecord>>(
+      'GET',
+      `query?query=${encodeURIComponent(query)}`
+    )
+    return (data.QueryResponse?.Invoice as QBInvoiceRecord[] | undefined) || []
+  }
+
+  /**
+   * Query all bills from QuickBooks.
+   */
+  async getBills(limit = 100, offset = 1): Promise<QBBillRecord[]> {
+    const query = `select * from Bill startposition ${offset} maxresults ${limit}`
+    const data = await this.makeRequest<QBQueryResponse<QBBillRecord>>(
+      'GET',
+      `query?query=${encodeURIComponent(query)}`
+    )
+    return (data.QueryResponse?.Bill as QBBillRecord[] | undefined) || []
+  }
+
+  /**
+   * Paginate through all results from a QB query function.
+   */
+  async getAllPaginated<T>(
+    fetchFn: (limit: number, offset: number) => Promise<T[]>,
+    pageSize = 100
+  ): Promise<T[]> {
+    const results: T[] = []
+    let offset = 1
+    let batch: T[] = []
+
+    do {
+      batch = await fetchFn(pageSize, offset)
+      results.push(...batch)
+      offset += pageSize
+    } while (batch.length === pageSize)
+
+    return results
   }
 
   /**
