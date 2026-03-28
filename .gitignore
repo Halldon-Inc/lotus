@@ -1,11 +1,8 @@
 node_modules/
 .next/
 .env.local
-*.db
 *.db-journal
 .env
-.env.local
-prisma/*.db
 .vercel
 .env*.local
 .env.production

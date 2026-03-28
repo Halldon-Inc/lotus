@@ -6,6 +6,11 @@ const nextConfig = {
   images: {
     domains: [],
   },
+  // Include the SQLite DB in serverless function bundles
+  outputFileTracingIncludes: {
+    '/api/**': ['./prisma/dev.db'],
+    '/**': ['./prisma/dev.db'],
+  },
 }
 
 module.exports = nextConfig
