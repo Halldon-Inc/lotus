@@ -13,6 +13,7 @@ import {
   ShoppingCart,
   Package,
   PackageCheck,
+  Warehouse,
   Truck,
   CreditCard,
   ClipboardList,
@@ -74,6 +75,12 @@ const navigationItems = [
     label: 'Procurement',
     href: '/procurement',
     icon: Package,
+    roles: ['ADMIN', 'MANAGER', 'PROCUREMENT', 'OPERATIONS'],
+  },
+  {
+    label: 'Inventory',
+    href: '/inventory',
+    icon: Warehouse,
     roles: ['ADMIN', 'MANAGER', 'PROCUREMENT', 'OPERATIONS'],
   },
   {

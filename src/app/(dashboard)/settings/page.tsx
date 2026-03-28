@@ -42,7 +42,11 @@ import {
   Bell,
   Database,
   Workflow,
+  ExternalLink,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react'
+import Link from 'next/link'
 import { formatDate } from '@/lib/utils'
 
 interface User {
@@ -115,6 +119,8 @@ export default function SettingsPage() {
 
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [qbConnected, setQbConnected] = useState<boolean | null>(null)
+  const [hsConnected, setHsConnected] = useState<boolean | null>(null)
 
   const [formData, setFormData] = useState({
     email: '',
@@ -223,10 +229,36 @@ export default function SettingsPage() {
     }
   }
 
+  const fetchQbStatus = async () => {
+    try {
+      const response = await fetch('/api/v1/quickbooks/status')
+      const result = await response.json()
+      if (result.success && result.data) {
+        setQbConnected(result.data.connected)
+      }
+    } catch {
+      setQbConnected(false)
+    }
+  }
+
+  const fetchHsStatus = async () => {
+    try {
+      const response = await fetch('/api/v1/hubspot/status')
+      const result = await response.json()
+      if (result.success && result.data) {
+        setHsConnected(result.data.connected)
+      }
+    } catch {
+      setHsConnected(false)
+    }
+  }
+
   useEffect(() => {
     if (session?.user.role && ['ADMIN', 'MANAGER'].includes(session.user.role)) {
       fetchUsers()
       fetchSettings()
+      fetchQbStatus()
+      fetchHsStatus()
     }
   }, [session])
 
@@ -638,59 +670,141 @@ export default function SettingsPage() {
 
       {/* Integrations Tab */}
       {activeTab === 'integrations' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Integration Settings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="hubspotEnabled"
-                  checked={systemSettings.integrationSettings.hubspotEnabled}
-                  onCheckedChange={(checked) => setSystemSettings({
-                    ...systemSettings,
-                    integrationSettings: {
-                      ...systemSettings.integrationSettings,
-                      hubspotEnabled: checked,
-                    },
-                  })}
-                />
-                <Label htmlFor="hubspotEnabled">Enable HubSpot integration</Label>
-              </div>
+        <div className="space-y-6">
+          {/* QuickBooks Integration Card */}
+          <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              <Link href="/settings/quickbooks" className="flex items-center justify-between p-6 hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-lg text-white font-bold text-lg"
+                    style={{ backgroundColor: '#2CA01C' }}
+                  >
+                    QB
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">QuickBooks Online</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sync customers, bills, and invoices with QuickBooks
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {qbConnected === null ? (
+                    <Badge variant="outline" className="text-muted-foreground">Checking...</Badge>
+                  ) : qbConnected ? (
+                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                      <CheckCircle className="mr-1 h-3 w-3" />
+                      Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      Not Connected
+                    </Badge>
+                  )}
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </Link>
+            </CardContent>
+          </Card>
 
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="emailIntegration"
-                  checked={systemSettings.integrationSettings.emailIntegrationEnabled}
-                  onCheckedChange={(checked) => setSystemSettings({
-                    ...systemSettings,
-                    integrationSettings: {
-                      ...systemSettings.integrationSettings,
-                      emailIntegrationEnabled: checked,
-                    },
-                  })}
-                />
-                <Label htmlFor="emailIntegration">Enable email integration</Label>
-              </div>
+          {/* HubSpot Integration Card */}
+          <Card className="overflow-hidden">
+            <CardContent className="p-0">
+              <Link href="/settings/hubspot" className="flex items-center justify-between p-6 hover:bg-muted/50 transition-colors">
+                <div className="flex items-center gap-4">
+                  <div
+                    className="flex h-12 w-12 items-center justify-center rounded-lg text-white font-bold text-lg"
+                    style={{ backgroundColor: '#FF7A59' }}
+                  >
+                    HS
+                  </div>
+                  <div>
+                    <p className="font-semibold text-foreground">HubSpot CRM</p>
+                    <p className="text-sm text-muted-foreground">
+                      Sync deal stages automatically with HubSpot
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {hsConnected === null ? (
+                    <Badge variant="outline" className="text-muted-foreground">Checking...</Badge>
+                  ) : hsConnected ? (
+                    <Badge
+                      className="border"
+                      style={{ backgroundColor: '#FFF0EB', color: '#FF7A59', borderColor: '#FFD4C8' }}
+                    >
+                      <CheckCircle className="mr-1 h-3 w-3" />
+                      Connected
+                    </Badge>
+                  ) : (
+                    <Badge variant="outline" className="text-muted-foreground">
+                      <XCircle className="mr-1 h-3 w-3" />
+                      Not Connected
+                    </Badge>
+                  )}
+                  <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                </div>
+              </Link>
+            </CardContent>
+          </Card>
 
-              <div className="flex items-center space-x-4">
-                <Button
-                  className="lotus-button"
-                  onClick={() => saveSettings('integrations')}
-                  disabled={settingsSaving}
-                >
-                  {settingsSaving ? 'Saving...' : 'Save Integration Settings'}
-                </Button>
-                {settingsMessage && activeTab === 'integrations' && (
-                  <span className={settingsMessage.type === 'success' ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
-                    {settingsMessage.text}
-                  </span>
-                )}
+          {/* Other Integration Settings */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Other Integrations</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="hubspotEnabled"
+                    checked={systemSettings.integrationSettings.hubspotEnabled}
+                    onCheckedChange={(checked) => setSystemSettings({
+                      ...systemSettings,
+                      integrationSettings: {
+                        ...systemSettings.integrationSettings,
+                        hubspotEnabled: checked,
+                      },
+                    })}
+                  />
+                  <Label htmlFor="hubspotEnabled">Enable HubSpot integration</Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <Switch
+                    id="emailIntegration"
+                    checked={systemSettings.integrationSettings.emailIntegrationEnabled}
+                    onCheckedChange={(checked) => setSystemSettings({
+                      ...systemSettings,
+                      integrationSettings: {
+                        ...systemSettings.integrationSettings,
+                        emailIntegrationEnabled: checked,
+                      },
+                    })}
+                  />
+                  <Label htmlFor="emailIntegration">Enable email integration</Label>
+                </div>
+
+                <div className="flex items-center space-x-4">
+                  <Button
+                    className="lotus-button"
+                    onClick={() => saveSettings('integrations')}
+                    disabled={settingsSaving}
+                  >
+                    {settingsSaving ? 'Saving...' : 'Save Integration Settings'}
+                  </Button>
+                  {settingsMessage && activeTab === 'integrations' && (
+                    <span className={settingsMessage.type === 'success' ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
+                      {settingsMessage.text}
+                    </span>
+                  )}
+                </div>
               </div>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* User Dialog */}

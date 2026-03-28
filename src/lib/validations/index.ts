@@ -346,6 +346,31 @@ export const updateClientInvoiceSchema = z.object({
   podVerified: z.boolean().optional(),
 })
 
+// Inventory validation schemas
+export const createInventoryItemSchema = z.object({
+  name: z.string().min(1, 'Name is required').max(200, 'Name too long'),
+  sku: z.string().max(100, 'SKU too long').optional().or(z.literal('')),
+  description: z.string().optional(),
+  category: z.string().max(100, 'Category too long').optional(),
+  quantityOnHand: z.number().int().min(0, 'Quantity cannot be negative').default(0),
+  reorderPoint: z.number().int().min(0, 'Reorder point cannot be negative').default(0),
+  location: z.string().max(200, 'Location too long').optional(),
+  unitCost: z.number().min(0, 'Unit cost cannot be negative').optional(),
+})
+
+export const updateInventoryItemSchema = createInventoryItemSchema.partial()
+
+export const adjustInventorySchema = z.object({
+  type: z.enum(['RECEIVED', 'SHIPPED', 'RETURNED', 'ADJUSTMENT']),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+  notes: z.string().optional(),
+})
+
+export const allocateInventorySchema = z.object({
+  purchaseOrderId: z.string().min(1, 'Purchase order is required'),
+  quantity: z.number().int().positive('Quantity must be a positive integer'),
+})
+
 // Utility validation functions
 export function validateEmail(email: string): boolean {
   return z.string().email().safeParse(email).success
@@ -404,3 +429,7 @@ export type UpdateShipmentInput = z.infer<typeof updateShipmentSchema>
 export type UploadPodInput = z.infer<typeof uploadPodSchema>
 export type CreateClientInvoiceInput = z.infer<typeof createClientInvoiceSchema>
 export type UpdateClientInvoiceInput = z.infer<typeof updateClientInvoiceSchema>
+export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>
+export type UpdateInventoryItemInput = z.infer<typeof updateInventoryItemSchema>
+export type AdjustInventoryInput = z.infer<typeof adjustInventorySchema>
+export type AllocateInventoryInput = z.infer<typeof allocateInventorySchema>

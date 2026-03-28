@@ -84,6 +84,11 @@ const statusConfig = {
   // Carrier/Manual method badges
   CARRIER: { label: 'Carrier', className: 'bg-blue-100 text-blue-800' },
   MANUAL: { label: 'Manual', className: 'bg-gray-100 text-gray-800' },
+
+  // Inventory movement types
+  ALLOCATED: { label: 'Allocated', className: 'bg-purple-100 text-purple-800' },
+  RETURNED: { label: 'Returned', className: 'bg-amber-100 text-amber-800' },
+  ADJUSTMENT: { label: 'Adjustment', className: 'bg-slate-100 text-slate-800' },
 } as const
 
 const sizeClasses = {

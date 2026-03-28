@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createDiscrepancySchema } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
+import { discrepancyAlert } from '@/lib/email-templates'
 
 export async function GET(request: NextRequest) {
   try {
@@ -222,7 +224,7 @@ export async function POST(request: NextRequest) {
         role: { in: ['ADMIN', 'MANAGER'] },
         isActive: true,
       },
-      select: { id: true },
+      select: { id: true, email: true },
     })
 
     await Promise.all(
@@ -240,6 +242,22 @@ export async function POST(request: NextRequest) {
         })
       )
     )
+
+    // Email all ADMIN users about the discrepancy
+    try {
+      const adminUsers = await prisma.user.findMany({
+        where: { role: 'ADMIN', isActive: true },
+        select: { email: true },
+      })
+      const template = discrepancyAlert(purchaseOrder.poNumber, data.type)
+      await Promise.all(
+        adminUsers
+          .filter((u) => u.email)
+          .map((u) => sendEmail(u.email, template.subject, template.html))
+      )
+    } catch (emailError) {
+      console.error('Failed to send discrepancy alert emails:', emailError)
+    }
 
     // Log activity
     await prisma.activityLog.create({

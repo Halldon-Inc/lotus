@@ -38,6 +38,7 @@ model User {
   approvalDecisions ApprovalRequest[]  @relation("ApprovalApprover")
   reportedDiscrepancies Discrepancy[]  @relation("DiscrepancyReporter")
   resolvedDiscrepancies Discrepancy[]  @relation("DiscrepancyResolver")
+  inventoryMovements    InventoryMovement[] @relation("InventoryMovements")
 
   @@map("users")
 }
@@ -69,6 +70,7 @@ model Client {
   shippingCity    String?
   shippingState   String?
   shippingZip     String?
+  quickbooksId    String?
   clientInvoices  ClientInvoice[]
 
   @@map("clients")
@@ -268,6 +270,8 @@ model Invoice {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
+  quickbooksId    String?
+
   // Relations
   lineItems       InvoiceLineItem[]
   matchRecords    MatchRecord[]
@@ -432,6 +436,8 @@ model ClientInvoice {
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
+  quickbooksId    String?
+
   // Relations
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   client          Client        @relation(fields: [clientId], references: [id])
@@ -446,4 +452,56 @@ model SystemSettings {
   updatedAt DateTime @updatedAt
 
   @@map("system_settings")
+}
+
+model QuickBooksConnection {
+  id             String    @id @default(cuid())
+  realmId        String    @unique
+  accessToken    String
+  refreshToken   String
+  tokenExpiresAt DateTime
+  companyName    String?
+  isActive       Boolean   @default(true)
+  connectedAt    DateTime  @default(now())
+  lastSyncAt     DateTime?
+  syncStatus     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("quickbooks_connections")
+}
+
+model InventoryItem {
+  id               String   @id @default(cuid())
+  name             String
+  sku              String?  @unique
+  description      String?
+  category         String?
+  quantityOnHand   Int      @default(0)
+  quantityReserved Int      @default(0)
+  reorderPoint     Int      @default(0)
+  location         String?
+  unitCost         Float?
+  lastRestockedAt  DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  movements        InventoryMovement[]
+
+  @@map("inventory_items")
+}
+
+model InventoryMovement {
+  id              String   @id @default(cuid())
+  inventoryItemId String
+  type            String   // RECEIVED, ALLOCATED, SHIPPED, RETURNED, ADJUSTMENT
+  quantity        Int
+  referenceType   String?  // PURCHASE_ORDER, QUOTE, MANUAL
+  referenceId     String?
+  notes           String?
+  performedById   String
+  createdAt       DateTime @default(now())
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id])
+  performedBy     User @relation("InventoryMovements", fields: [performedById], references: [id])
+
+  @@map("inventory_movements")
 }

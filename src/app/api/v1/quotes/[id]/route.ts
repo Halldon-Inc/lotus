@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { updateQuoteSchema } from '@/lib/validations'
+import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
 export async function GET(
   request: NextRequest,
@@ -135,6 +136,7 @@ export async function PATCH(
               id: true,
               name: true,
               type: true,
+              hubspotId: true,
             },
           },
           createdBy: {
@@ -217,6 +219,25 @@ export async function PATCH(
     // When quote is ACCEPTED, hint that a PO should be created
     if (data.status === 'ACCEPTED' && existingQuote.status !== 'ACCEPTED') {
       response.hint = 'Quote accepted. A purchase order should be created from this quote.'
+    }
+
+    // HubSpot sync
+    try {
+      if (data.status === 'REJECTED' && existingQuote.status !== 'REJECTED') {
+        const hubspotId = quote.client.hubspotId
+        if (hubspotId) {
+          const deals = await searchDeals('hs_object_id', hubspotId)
+          if (deals.length > 0) {
+            await updateDealStage(deals[0].id, 'closedLost')
+            await createEngagementNote(
+              deals[0].id,
+              `Quote ${quote.quoteNumber || existingQuote.quoteNumber} rejected by client`
+            )
+          }
+        }
+      }
+    } catch (hubspotError) {
+      console.error('HubSpot sync error (quote rejected):', hubspotError)
     }
 
     return NextResponse.json(response)

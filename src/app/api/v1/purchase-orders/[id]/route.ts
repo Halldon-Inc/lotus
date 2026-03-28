@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { updatePurchaseOrderSchema } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
+import { procurementAlert, poNeedsCorrection, deliveryConfirmed } from '@/lib/email-templates'
+import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
 export async function GET(
   request: NextRequest,
@@ -190,6 +193,7 @@ export async function PATCH(
             id: true,
             name: true,
             type: true,
+            hubspotId: true,
           },
         },
         verifiedBy: {
@@ -245,6 +249,24 @@ export async function PATCH(
             }),
           },
         })
+
+        // Email the assigned sales rep
+        try {
+          const salesRep = await prisma.user.findUnique({
+            where: { id: assignedSalesRepId },
+            select: { email: true, name: true },
+          })
+          if (salesRep?.email) {
+            const template = poNeedsCorrection(
+              purchaseOrder.poNumber,
+              data.rejectionReason || 'Correction required',
+              salesRep.name || 'Team Member'
+            )
+            await sendEmail(salesRep.email, template.subject, template.html)
+          }
+        } catch (emailError) {
+          console.error('Failed to send NEEDS_CORRECTION email:', emailError)
+        }
       }
     }
 
@@ -252,7 +274,7 @@ export async function PATCH(
     if (data.status === 'VERIFIED' && existingPO.status !== 'VERIFIED') {
       const procurementUsers = await prisma.user.findMany({
         where: { role: 'PROCUREMENT' },
-        select: { id: true },
+        select: { id: true, email: true },
       })
 
       if (procurementUsers.length > 0) {
@@ -275,6 +297,70 @@ export async function PATCH(
             })
           )
         )
+
+        // Email all procurement users
+        try {
+          const itemCount = await prisma.purchaseOrderItem.count({
+            where: { purchaseOrderId: purchaseOrder.id },
+          })
+          const template = procurementAlert(purchaseOrder.poNumber, itemCount)
+          await Promise.all(
+            procurementUsers
+              .filter((u) => u.email)
+              .map((u) => sendEmail(u.email, template.subject, template.html))
+          )
+        } catch (emailError) {
+          console.error('Failed to send VERIFIED procurement emails:', emailError)
+        }
+      }
+    }
+
+    // HubSpot sync
+    try {
+      const hubspotId = purchaseOrder.client.hubspotId
+      if (hubspotId) {
+        if (data.status === 'VERIFIED' && existingPO.status !== 'VERIFIED') {
+          const deals = await searchDeals('hs_object_id', hubspotId)
+          if (deals.length > 0) {
+            await updateDealStage(deals[0].id, 'poReceived')
+            await createEngagementNote(
+              deals[0].id,
+              `PO ${purchaseOrder.poNumber} verified and ready for procurement`
+            )
+          }
+        }
+        if (data.status === 'DELIVERED' && existingPO.status !== 'DELIVERED') {
+          const deals = await searchDeals('hs_object_id', hubspotId)
+          if (deals.length > 0) {
+            await updateDealStage(deals[0].id, 'closedWonToBeInvoiced')
+            await createEngagementNote(
+              deals[0].id,
+              `PO ${purchaseOrder.poNumber} delivered successfully`
+            )
+          }
+        }
+      }
+    } catch (hubspotError) {
+      console.error('HubSpot sync error (PO status change):', hubspotError)
+    }
+
+    // Email: DELIVERED notifies client contact
+    if (data.status === 'DELIVERED' && existingPO.status !== 'DELIVERED') {
+      try {
+        const poWithClient = await prisma.purchaseOrder.findUnique({
+          where: { id: purchaseOrder.id },
+          select: {
+            client: { select: { contactEmail: true, contactName: true, name: true } },
+          },
+        })
+        const clientEmail = poWithClient?.client?.contactEmail
+        if (clientEmail) {
+          const clientName = poWithClient.client.contactName || poWithClient.client.name
+          const template = deliveryConfirmed(clientName, purchaseOrder.poNumber)
+          await sendEmail(clientEmail, template.subject, template.html)
+        }
+      } catch (emailError) {
+        console.error('Failed to send DELIVERED email:', emailError)
       }
     }
 

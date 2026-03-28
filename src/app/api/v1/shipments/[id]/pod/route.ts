@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { uploadPodSchema } from '@/lib/validations'
+import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
 export async function PUT(
   request: NextRequest,
@@ -60,7 +61,7 @@ export async function PUT(
           select: {
             id: true,
             poNumber: true,
-            client: { select: { id: true, name: true } },
+            client: { select: { id: true, name: true, hubspotId: true } },
           },
         },
       },
@@ -85,6 +86,23 @@ export async function PUT(
         }),
       },
     })
+
+    // HubSpot sync
+    try {
+      const hubspotId = shipment.purchaseOrder.client.hubspotId
+      if (hubspotId) {
+        const deals = await searchDeals('hs_object_id', hubspotId)
+        if (deals.length > 0) {
+          await updateDealStage(deals[0].id, 'closedWonToBeInvoiced')
+          await createEngagementNote(
+            deals[0].id,
+            `POD confirmed for PO ${shipment.purchaseOrder.poNumber}, shipment delivered`
+          )
+        }
+      }
+    } catch (hubspotError) {
+      console.error('HubSpot sync error (POD upload):', hubspotError)
+    }
 
     return NextResponse.json({
       success: true,

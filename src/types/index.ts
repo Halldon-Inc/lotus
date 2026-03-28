@@ -388,6 +388,44 @@ export type DiscrepancyWithDetails = Discrepancy & {
   resolvedBy: User | null
 }
 
+// Inventory types
+export type InventoryItem = {
+  id: string
+  name: string
+  sku: string | null
+  description: string | null
+  category: string | null
+  quantityOnHand: number
+  quantityReserved: number
+  reorderPoint: number
+  location: string | null
+  unitCost: number | null
+  lastRestockedAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type InventoryMovement = {
+  id: string
+  inventoryItemId: string
+  type: 'RECEIVED' | 'ALLOCATED' | 'SHIPPED' | 'RETURNED' | 'ADJUSTMENT'
+  quantity: number
+  referenceType: string | null
+  referenceId: string | null
+  notes: string | null
+  performedById: string
+  createdAt: Date
+}
+
+export type InventoryMovementWithUser = InventoryMovement & {
+  performedBy: User
+}
+
+export type InventoryItemWithMovements = InventoryItem & {
+  movements: InventoryMovementWithUser[]
+  _count: { movements: number }
+}
+
 // API Response types
 export type ApiResponse<T = any> = {
   success: boolean

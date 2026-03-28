@@ -26,6 +26,8 @@ import {
   Phone,
   Mail,
   MapPin,
+  RefreshCw,
+  Loader2,
 } from 'lucide-react'
 import { formatCurrency, formatDate, debounce } from '@/lib/utils'
 import { CreateClientDialog } from '@/components/shared/create-client-dialog'
@@ -76,6 +78,11 @@ export default function ClientsPage() {
   const [totalClients, setTotalClients] = useState(0)
   const [clientDialogOpen, setClientDialogOpen] = useState(false)
 
+  // QuickBooks sync
+  const [qbConnected, setQbConnected] = useState(false)
+  const [qbSyncing, setQbSyncing] = useState(false)
+  const [qbSyncMessage, setQbSyncMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+
   const fetchClients = async (search: string = '', page: number = 1) => {
     try {
       setLoading(true)
@@ -112,6 +119,41 @@ export default function ClientsPage() {
   useEffect(() => {
     fetchClients()
   }, [])
+
+  useEffect(() => {
+    const checkQb = async () => {
+      try {
+        const res = await fetch('/api/v1/quickbooks/status')
+        const result = await res.json()
+        if (result.success && result.data?.connected) {
+          setQbConnected(true)
+        }
+      } catch {
+        // QB not available
+      }
+    }
+    checkQb()
+  }, [])
+
+  const handleQbSync = async () => {
+    setQbSyncing(true)
+    setQbSyncMessage(null)
+    try {
+      const res = await fetch('/api/v1/quickbooks/sync/customers', { method: 'POST' })
+      const result = await res.json()
+      if (result.success) {
+        const count = result.data?.synced ?? 0
+        setQbSyncMessage({ text: `Synced ${count} customers to QuickBooks`, type: 'success' })
+      } else {
+        setQbSyncMessage({ text: result.error || 'Sync failed', type: 'error' })
+      }
+    } catch {
+      setQbSyncMessage({ text: 'Network error during sync', type: 'error' })
+    } finally {
+      setQbSyncing(false)
+      setTimeout(() => setQbSyncMessage(null), 5000)
+    }
+  }
 
   useEffect(() => {
     if (searchQuery !== '') {
@@ -156,12 +198,55 @@ export default function ClientsPage() {
             Manage your clients and their information
           </p>
         </div>
-        {canManageClients && (
-          <Button className="lotus-button" onClick={() => setClientDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Client
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {qbConnected ? (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleQbSync}
+                disabled={qbSyncing}
+                title="Sync clients to QuickBooks customers"
+              >
+                {qbSyncing ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                )}
+                <span
+                  className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold text-white"
+                  style={{ backgroundColor: '#2CA01C' }}
+                >
+                  QB
+                </span>
+                Sync Customers
+              </Button>
+              {qbSyncMessage && (
+                <span className={`text-xs ${qbSyncMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+                  {qbSyncMessage.text}
+                </span>
+              )}
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled
+              title="Connect QuickBooks in Settings"
+            >
+              <span className="mr-1 inline-flex h-5 w-5 items-center justify-center rounded text-[10px] font-bold text-white bg-gray-400">
+                QB
+              </span>
+              Sync Customers
+            </Button>
+          )}
+          {canManageClients && (
+            <Button className="lotus-button" onClick={() => setClientDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Client
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Stats Cards */}

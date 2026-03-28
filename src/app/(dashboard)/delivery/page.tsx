@@ -36,6 +36,7 @@ import {
   Search,
   Calendar,
   Building2,
+  Download,
 } from 'lucide-react'
 import { formatDate, formatCurrency } from '@/lib/utils'
 import type { ApiResponse } from '@/types'
@@ -104,6 +105,7 @@ export default function DeliveryPage() {
   const [carrierName, setCarrierName] = useState('')
   const [scheduledDate, setScheduledDate] = useState('')
   const [creating, setCreating] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const fetchData = useCallback(async () => {
     try {
@@ -169,6 +171,35 @@ export default function DeliveryPage() {
     }
   }
 
+  const hasManualShipments = shipments.some((s) => s.method === 'MANUAL')
+
+  const exportToDetrack = async () => {
+    try {
+      setExporting(true)
+      const response = await fetch('/api/v1/shipments/export/detrack')
+      if (!response.ok) {
+        console.error('Detrack export failed:', response.statusText)
+        return
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const disposition = response.headers.get('Content-Disposition') || ''
+      const filenameMatch = disposition.match(/filename=(.+)/)
+      const filename = filenameMatch ? filenameMatch[1] : 'detrack-upload.csv'
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      console.error('Failed to export Detrack CSV')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const filteredShipments = shipments.filter((s) => {
     if (!searchQuery) return true
     const q = searchQuery.toLowerCase()
@@ -203,6 +234,16 @@ export default function DeliveryPage() {
           <h1 className="text-3xl font-bold text-foreground">Delivery Management</h1>
           <p className="text-muted-foreground">Manage shipments and track deliveries</p>
         </div>
+        {hasManualShipments && (
+          <Button
+            variant="outline"
+            onClick={exportToDetrack}
+            disabled={exporting}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            {exporting ? 'Exporting...' : 'Export to Detrack'}
+          </Button>
+        )}
       </div>
 
       {/* KPI Row */}

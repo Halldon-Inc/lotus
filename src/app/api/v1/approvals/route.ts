@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createApprovalRequestSchema } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
+import { approvalNeeded } from '@/lib/email-templates'
 
 export async function GET(request: NextRequest) {
   try {
@@ -188,6 +190,47 @@ export async function POST(request: NextRequest) {
         }),
       },
     })
+
+    // Email the approver(s) about the new approval request
+    try {
+      const requesterName = approval.requestedBy?.name || approval.requestedBy?.email || 'A team member'
+      const template = approvalNeeded(data.entityType, requesterName)
+
+      if (approval.rule?.approverUserId) {
+        // Specific user approver
+        const approverUser = await prisma.user.findUnique({
+          where: { id: approval.rule.approverUserId },
+          select: { email: true },
+        })
+        if (approverUser?.email) {
+          await sendEmail(approverUser.email, template.subject, template.html)
+        }
+      } else if (approval.rule?.approverRole) {
+        // All users with the approver role
+        const roleUsers = await prisma.user.findMany({
+          where: { role: approval.rule.approverRole, isActive: true },
+          select: { email: true },
+        })
+        await Promise.all(
+          roleUsers
+            .filter((u) => u.email)
+            .map((u) => sendEmail(u.email, template.subject, template.html))
+        )
+      } else {
+        // No rule: notify all ADMIN and MANAGER users
+        const adminManagers = await prisma.user.findMany({
+          where: { role: { in: ['ADMIN', 'MANAGER'] }, isActive: true },
+          select: { email: true },
+        })
+        await Promise.all(
+          adminManagers
+            .filter((u) => u.email)
+            .map((u) => sendEmail(u.email, template.subject, template.html))
+        )
+      }
+    } catch (emailError) {
+      console.error('Failed to send approval notification emails:', emailError)
+    }
 
     return NextResponse.json({
       success: true,

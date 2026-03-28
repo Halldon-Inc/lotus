@@ -3,6 +3,9 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { updateClientInvoiceSchema } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
+import { invoiceSent, paymentReceived } from '@/lib/email-templates'
+import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
 export async function GET(
   request: NextRequest,
@@ -156,7 +159,7 @@ export async function PUT(
       data: updateData,
       include: {
         client: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, hubspotId: true },
         },
         purchaseOrder: {
           select: { id: true, poNumber: true },
@@ -177,6 +180,79 @@ export async function PUT(
         }),
       },
     })
+
+    // Email: SENT notifies client contact
+    if (data.status === 'SENT' && existing.status !== 'SENT') {
+      try {
+        const fullInvoice = await prisma.clientInvoice.findUnique({
+          where: { id },
+          select: {
+            totalAmount: true,
+            dueDate: true,
+            client: { select: { contactEmail: true, contactName: true, name: true } },
+          },
+        })
+        const clientEmail = fullInvoice?.client?.contactEmail
+        if (clientEmail) {
+          const clientName = fullInvoice.client.contactName || fullInvoice.client.name
+          const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+            fullInvoice.totalAmount
+          )
+          const dueDate = fullInvoice.dueDate
+            ? new Intl.DateTimeFormat('en-US', { year: 'numeric', month: 'short', day: 'numeric' }).format(
+                new Date(fullInvoice.dueDate)
+              )
+            : 'Upon receipt'
+          const template = invoiceSent(clientName, clientInvoice.invoiceNumber, amount, dueDate)
+          await sendEmail(clientEmail, template.subject, template.html)
+        }
+      } catch (emailError) {
+        console.error('Failed to send invoice SENT email:', emailError)
+      }
+    }
+
+    // Email: PAID confirms payment to client
+    if (data.status === 'PAID' && existing.status !== 'PAID') {
+      try {
+        const fullInvoice = await prisma.clientInvoice.findUnique({
+          where: { id },
+          select: {
+            totalAmount: true,
+            client: { select: { contactEmail: true, contactName: true, name: true } },
+          },
+        })
+        const clientEmail = fullInvoice?.client?.contactEmail
+        if (clientEmail) {
+          const clientName = fullInvoice.client.contactName || fullInvoice.client.name
+          const amount = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(
+            fullInvoice.totalAmount
+          )
+          const template = paymentReceived(clientName, clientInvoice.invoiceNumber, amount)
+          await sendEmail(clientEmail, template.subject, template.html)
+        }
+      } catch (emailError) {
+        console.error('Failed to send payment PAID email:', emailError)
+      }
+    }
+
+    // HubSpot sync
+    try {
+      if (data.status === 'PAID' && existing.status !== 'PAID') {
+        const hubspotId = clientInvoice.client.hubspotId
+        if (hubspotId) {
+          const deals = await searchDeals('hs_object_id', hubspotId)
+          if (deals.length > 0) {
+            await updateDealStage(deals[0].id, 'closedWon')
+            await createEngagementNote(
+              deals[0].id,
+              `Invoice ${clientInvoice.invoiceNumber} paid in full`
+            )
+          }
+        }
+      }
+    } catch (hubspotError) {
+      console.error('HubSpot sync error (invoice paid):', hubspotError)
+    }
 
     return NextResponse.json({
       success: true,
