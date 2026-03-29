@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && prisma migrate deploy && prisma db seed || true && next build && cp prisma/dev.db .next/server/prisma-dev.db 2>/dev/null || true",
+    "build": "DATABASE_URL='file:./prisma/dev.db' prisma generate && DATABASE_URL='file:./prisma/dev.db' prisma migrate deploy || true && DATABASE_URL='file:./prisma/dev.db' prisma db seed || true && next build && cp prisma/dev.db .next/server/prisma-dev.db 2>/dev/null || true",
     "start": "next start",
     "lint": "next lint",
     "db:seed": "npx tsx prisma/seed.ts",

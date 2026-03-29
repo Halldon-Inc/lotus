@@ -6,9 +6,11 @@ const nextConfig = {
   images: {
     domains: [],
   },
-  // Force Vercel to include the SQLite DB in serverless function bundles
+  // Force Vercel to include the SQLite DB in ALL serverless function bundles
+  // '/*' only matches top-level routes; need explicit patterns for nested API routes
   outputFileTracingIncludes: {
-    '/*': ['./prisma/dev.db'],
+    '/api/**': ['./prisma/dev.db', './src/lib/db-seed.ts'],
+    '/**': ['./prisma/dev.db', './src/lib/db-seed.ts'],
   },
   // Webpack: copy dev.db into the output so serverless functions can find it
   webpack: (config, { isServer }) => {
