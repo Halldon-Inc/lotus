@@ -106,6 +106,14 @@ export async function PUT(
       )
     }
 
+    // Segregation of duties: prevent requester from approving their own request
+    if (existingApproval.requestedById === session.user.id) {
+      return NextResponse.json(
+        { error: 'Cannot approve your own request (segregation of duties)' },
+        { status: 403 }
+      )
+    }
+
     // Check if current user is authorized to approve this request
     if (existingApproval.rule) {
       const rule = existingApproval.rule

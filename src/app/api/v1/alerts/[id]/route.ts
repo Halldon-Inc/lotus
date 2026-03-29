@@ -72,53 +72,10 @@ export async function PATCH(
   }
 }
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const { id } = await params
-    const session = await getServerSession(authOptions)
-    
-    if (!session) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Check if alert exists and belongs to user
-    const alert = await prisma.alert.findUnique({
-      where: { id },
-    })
-
-    if (!alert) {
-      return NextResponse.json(
-        { success: false, error: 'Alert not found' },
-        { status: 404 }
-      )
-    }
-
-    if (alert.userId !== session.user.id) {
-      return NextResponse.json(
-        { success: false, error: 'Unauthorized' },
-        { status: 403 }
-      )
-    }
-
-    await prisma.alert.delete({
-      where: { id },
-    })
-
-    return NextResponse.json({
-      success: true,
-      message: 'Alert deleted successfully',
-    })
-  } catch (error) {
-    console.error('Alert DELETE error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
-    )
-  }
+// DELETE is not allowed: activity logs and alerts are immutable for audit compliance
+export async function DELETE() {
+  return NextResponse.json(
+    { success: false, error: 'Method not allowed. Alerts are immutable for audit compliance.' },
+    { status: 405 }
+  )
 }

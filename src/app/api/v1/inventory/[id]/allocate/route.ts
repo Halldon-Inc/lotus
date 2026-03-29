@@ -53,16 +53,19 @@ export async function POST(
       )
     }
 
-    // Check available quantity (on hand minus already reserved)
-    const available = item.quantityOnHand - item.quantityReserved
-    if (quantity > available) {
-      return NextResponse.json(
-        { success: false, error: `Insufficient available stock. Only ${available} available (${item.quantityOnHand} on hand, ${item.quantityReserved} reserved).` },
-        { status: 400 }
-      )
-    }
-
     const result = await prisma.$transaction(async (tx) => {
+      // Re-fetch item inside transaction to prevent race condition
+      const currentItem = await tx.inventoryItem.findUnique({ where: { id } })
+      if (!currentItem) throw new Error('Not found')
+
+      // Check available quantity (on hand minus already reserved)
+      const available = currentItem.quantityOnHand - currentItem.quantityReserved
+      if (quantity > available) {
+        throw new Error(
+          `Insufficient available stock. Only ${available} available (${currentItem.quantityOnHand} on hand, ${currentItem.quantityReserved} reserved).`
+        )
+      }
+
       // Create ALLOCATED movement
       const movement = await tx.inventoryMovement.create({
         data: {
@@ -89,7 +92,7 @@ export async function POST(
         },
       })
 
-      return { movement, item: updated }
+      return { movement, item: updated, previousReserved: currentItem.quantityReserved }
     })
 
     // Log activity
@@ -103,8 +106,8 @@ export async function POST(
           purchaseOrderId,
           poNumber: po.poNumber,
           quantity,
-          previousReserved: item.quantityReserved,
-          newReserved: item.quantityReserved + quantity,
+          previousReserved: result.previousReserved,
+          newReserved: result.previousReserved + quantity,
         }),
       },
     })
@@ -115,6 +118,20 @@ export async function POST(
       message: `${quantity} units allocated to PO ${po.poNumber}`,
     })
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === 'Not found') {
+        return NextResponse.json(
+          { success: false, error: 'Inventory item not found' },
+          { status: 404 }
+        )
+      }
+      if (error.message.startsWith('Insufficient available stock')) {
+        return NextResponse.json(
+          { success: false, error: error.message },
+          { status: 400 }
+        )
+      }
+    }
     console.error('Inventory allocate POST error:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },

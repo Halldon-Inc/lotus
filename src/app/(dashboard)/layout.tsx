@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { Sidebar } from '@/components/shared/sidebar'
 import { TopBar } from '@/components/shared/top-bar'
 import { LoadingState } from '@/components/shared/loading-state'
+import { InactivityTimeout } from '@/components/shared/inactivity-timeout'
 
 export default function DashboardLayout({
   children,
@@ -23,6 +24,7 @@ export default function DashboardLayout({
 
   return (
     <div className="flex h-screen bg-background">
+      <InactivityTimeout />
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <TopBar />

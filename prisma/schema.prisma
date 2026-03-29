@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -39,6 +39,9 @@ model User {
   reportedDiscrepancies Discrepancy[]  @relation("DiscrepancyReporter")
   resolvedDiscrepancies Discrepancy[]  @relation("DiscrepancyResolver")
   inventoryMovements    InventoryMovement[] @relation("InventoryMovements")
+  totpSecret            String?
+  totpEnabled           Boolean  @default(false)
+  passwordHash          String?
 
   @@map("users")
 }
@@ -72,8 +75,25 @@ model Client {
   shippingZip     String?
   quickbooksId    String?
   clientInvoices  ClientInvoice[]
+  budgets         Budget[]
 
   @@map("clients")
+}
+
+model Budget {
+  id            String   @id @default(cuid())
+  clientId      String
+  fiscalYear    Int
+  department    String?
+  totalBudget   Float    @default(0)
+  encumbered    Float    @default(0)
+  spent         Float    @default(0)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  client        Client   @relation(fields: [clientId], references: [id])
+  @@unique([clientId, fiscalYear, department])
+  @@map("budgets")
 }
 
 model Request {
@@ -158,6 +178,8 @@ model PurchaseOrder {
   rejectionReason String?
   rejectionCount  Int      @default(0)
   notes           String?
+  procurementMethod       String?
+  cooperativeContractRef  String?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
@@ -234,6 +256,8 @@ model ActivityLog {
   entityId   String
   action     String
   details    String?  // JSON string
+  oldValue   String?
+  newValue   String?
   createdAt  DateTime @default(now())
 
   // Relations
