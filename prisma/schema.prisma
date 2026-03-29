@@ -448,6 +448,7 @@ model Shipment {
   // Relations
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   items           ShipmentItem[]
+  clientInvoices  ClientInvoice[]
 
   @@map("shipments")
 }
@@ -487,6 +488,7 @@ model ClientInvoice {
   // Relations
   purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
   client          Client        @relation(fields: [clientId], references: [id])
+  shipment        Shipment?     @relation(fields: [shipmentId], references: [id])
 
   @@map("client_invoices")
 }
