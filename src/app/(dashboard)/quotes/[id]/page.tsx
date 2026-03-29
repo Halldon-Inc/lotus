@@ -6,6 +6,23 @@ import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -32,6 +49,7 @@ import {
   Printer,
   ExternalLink,
   Clock,
+  Edit3,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatRelativeTime } from '@/lib/utils'
 import Link from 'next/link'
@@ -89,6 +107,9 @@ export default function QuoteDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ status: '', validUntil: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const quoteId = params.id as string
 
@@ -134,6 +155,42 @@ export default function QuoteDetailPage() {
   }
 
   const canManage = session?.user.role && ['ADMIN', 'MANAGER', 'SALES'].includes(session.user.role)
+
+  const openEditDialog = () => {
+    if (!quote) return
+    setEditForm({
+      status: quote.status,
+      validUntil: quote.validUntil ? quote.validUntil.split('T')[0] : '',
+    })
+    setEditDialogOpen(true)
+  }
+
+  const saveEdit = async () => {
+    try {
+      setSavingEdit(true)
+      const payload: Record<string, string> = {}
+      if (editForm.status) {
+        payload.status = editForm.status
+      }
+      if (editForm.validUntil) {
+        payload.validUntil = editForm.validUntil
+      }
+      const response = await fetch(`/api/v1/quotes/${quoteId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const result: ApiResponse = await response.json()
+      if (result.success) {
+        setEditDialogOpen(false)
+        fetchQuote()
+      }
+    } catch (err) {
+      console.error('Failed to update quote:', err)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
 
   const isExpiringSoon = (validUntil: string | null) => {
     if (!validUntil) return false
@@ -200,6 +257,10 @@ export default function QuoteDetailPage() {
         {/* Action Buttons */}
         {canManage && (
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={openEditDialog}>
+              <Edit3 className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
             {quote.status === 'DRAFT' && (
               <Button
                 className="lotus-button"
@@ -459,6 +520,63 @@ export default function QuoteDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Edit Quote Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[475px]">
+          <DialogHeader>
+            <DialogTitle>Edit Quote</DialogTitle>
+            <DialogDescription>
+              Update the status and validity date for this quote.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-status">Status</Label>
+              <Select
+                value={editForm.status}
+                onValueChange={(val) => setEditForm({ ...editForm, status: val })}
+              >
+                <SelectTrigger id="edit-status">
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="DRAFT">Draft</SelectItem>
+                  <SelectItem value="SENT">Sent</SelectItem>
+                  <SelectItem value="ACCEPTED">Accepted</SelectItem>
+                  <SelectItem value="REJECTED">Rejected</SelectItem>
+                  <SelectItem value="EXPIRED">Expired</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-valid-until">Valid Until</Label>
+              <Input
+                id="edit-valid-until"
+                type="date"
+                value={editForm.validUntil}
+                onChange={(e) => setEditForm({ ...editForm, validUntil: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={savingEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="lotus-button"
+              onClick={saveEdit}
+              disabled={savingEdit}
+            >
+              {savingEdit ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

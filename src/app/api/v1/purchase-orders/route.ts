@@ -5,7 +5,7 @@ import { prisma } from '@/lib/db'
 import { sendEmail } from '@/lib/email'
 import { poReceived } from '@/lib/email-templates'
 import { createPurchaseOrderSchema, createManualPurchaseOrderSchema } from '@/lib/validations'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
               ? new Date(data.scheduledDeliveryDate)
               : undefined,
             deliveryMethod: data.deliveryMethod,
+            procurementMethod: data.procurementMethod,
             notes: data.notes,
           },
           include: {
@@ -378,6 +379,12 @@ export async function POST(request: NextRequest) {
       message: 'Purchase order created successfully',
     })
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'A record with this identifier already exists' },
+        { status: 409 }
+      )
+    }
     console.error('Purchase Orders POST error:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },

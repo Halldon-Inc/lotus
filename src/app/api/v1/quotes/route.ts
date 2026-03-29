@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createQuoteSchema, updateQuoteSchema } from '@/lib/validations'
 import { generateQuoteNumber } from '@/lib/utils'
-import type { Prisma } from '@prisma/client'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -242,6 +242,12 @@ export async function POST(request: NextRequest) {
       message: 'Quote created successfully',
     })
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'A record with this identifier already exists' },
+        { status: 409 }
+      )
+    }
     console.error('Quotes POST error:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },

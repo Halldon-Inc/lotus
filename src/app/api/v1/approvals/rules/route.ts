@@ -70,6 +70,16 @@ export async function POST(request: NextRequest) {
 
     const data = validation.data
 
+    // Validate conditionValue is a valid number for numeric operators
+    if (['gt', 'lt', 'gte', 'lte'].includes(data.conditionOp)) {
+      if (isNaN(Number(data.conditionValue))) {
+        return NextResponse.json(
+          { success: false, error: 'Condition value must be a number for numeric operators' },
+          { status: 400 }
+        )
+      }
+    }
+
     // Verify approver user exists if specified
     if (data.approverUserId) {
       const user = await prisma.user.findUnique({

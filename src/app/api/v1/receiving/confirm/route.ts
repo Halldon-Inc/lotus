@@ -66,6 +66,15 @@ export async function PUT(request: NextRequest) {
         // Support partial receiving: add to existing receivedQuantity
         const previouslyReceived = existingItem.receivedQuantity || 0
         const newTotalReceived = previouslyReceived + item.receivedQuantity
+
+        // Cap: cumulative received quantity cannot exceed ordered quantity
+        if (newTotalReceived > existingItem.quantity) {
+          return NextResponse.json(
+            { error: `Cannot receive ${item.receivedQuantity} units. Only ${existingItem.quantity - previouslyReceived} remaining.` },
+            { status: 400 }
+          )
+        }
+
         const isFullyReceived = newTotalReceived >= existingItem.quantity
         const discrepancy = isFullyReceived && newTotalReceived !== existingItem.quantity
 

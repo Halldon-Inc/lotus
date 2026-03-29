@@ -7,6 +7,17 @@ import { sendEmail } from '@/lib/email'
 import { procurementAlert, poNeedsCorrection, deliveryConfirmed } from '@/lib/email-templates'
 import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
+const validTransitions: Record<string, string[]> = {
+  'RECEIVED': ['VERIFIED', 'NEEDS_CORRECTION'],
+  'VERIFIED': ['IN_PURCHASING', 'NEEDS_CORRECTION'],
+  'NEEDS_CORRECTION': ['RESUBMITTED'],
+  'RESUBMITTED': ['VERIFIED', 'NEEDS_CORRECTION'],
+  'IN_PURCHASING': ['PARTIALLY_FULFILLED', 'FULFILLED'],
+  'PARTIALLY_FULFILLED': ['FULFILLED'],
+  'FULFILLED': ['DELIVERED'],
+  'DELIVERED': [],
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -146,6 +157,17 @@ export async function PATCH(
         { success: false, error: 'Purchase order not found' },
         { status: 404 }
       )
+    }
+
+    // Validate status transition
+    if (data.status && data.status !== existingPO.status) {
+      const allowed = validTransitions[existingPO.status] || []
+      if (!allowed.includes(data.status)) {
+        return NextResponse.json(
+          { error: `Cannot transition from ${existingPO.status} to ${data.status}` },
+          { status: 400 }
+        )
+      }
     }
 
     // NEEDS_CORRECTION requires a rejectionReason

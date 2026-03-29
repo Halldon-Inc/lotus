@@ -104,6 +104,7 @@ export const createManualPurchaseOrderSchema = z.object({
   totalAmount: z.number().positive('Total amount must be positive'),
   scheduledDeliveryDate: z.string().optional(),
   deliveryMethod: z.enum(['CARRIER', 'MANUAL']).optional(),
+  procurementMethod: z.enum(['COMPETITIVE_BID', 'COOPERATIVE_CONTRACT', 'SOLE_SOURCE', 'MICRO_PURCHASE']).optional(),
   notes: z.string().optional(),
 })
 

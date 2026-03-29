@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
 import { createInvoiceSchema } from '@/lib/validations'
+import { Prisma } from '@prisma/client'
 
 export async function GET(request: NextRequest) {
   try {
@@ -160,19 +161,20 @@ export async function POST(request: NextRequest) {
         },
       })
 
-      // Create line items
+      // Create line items (recalculate totalPrice server-side)
       await Promise.all(
-        data.lineItems.map((item) =>
-          tx.invoiceLineItem.create({
+        data.lineItems.map((item) => {
+          const calculatedTotal = item.quantity * item.unitPrice
+          return tx.invoiceLineItem.create({
             data: {
               invoiceId: created.id,
               description: item.description,
               quantity: item.quantity,
               unitPrice: item.unitPrice,
-              totalPrice: item.totalPrice,
+              totalPrice: calculatedTotal,
             },
           })
-        )
+        })
       )
 
       return tx.invoice.findUnique({
@@ -217,6 +219,12 @@ export async function POST(request: NextRequest) {
       message: 'Invoice created successfully',
     })
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return NextResponse.json(
+        { error: 'A record with this identifier already exists' },
+        { status: 409 }
+      )
+    }
     console.error('Invoices POST error:', error)
     return NextResponse.json(
       { success: false, error: 'Internal server error' },

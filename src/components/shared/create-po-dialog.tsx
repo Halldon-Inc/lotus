@@ -88,6 +88,7 @@ const manualEntrySchema = z.object({
   items: z.array(manualLineItemSchema).min(1, 'At least one line item is required'),
   scheduledDeliveryDate: z.string().optional(),
   deliveryMethod: z.string().optional(),
+  procurementMethod: z.string().optional(),
   notes: z.string().optional(),
 })
 
@@ -160,6 +161,7 @@ export function CreatePoDialog({ open, onOpenChange, onSuccess }: CreatePoDialog
       items: [{ ...EMPTY_LINE_ITEM }],
       scheduledDeliveryDate: '',
       deliveryMethod: '',
+      procurementMethod: '',
       notes: '',
     },
   })
@@ -254,6 +256,7 @@ export function CreatePoDialog({ open, onOpenChange, onSuccess }: CreatePoDialog
       items: [{ ...EMPTY_LINE_ITEM }],
       scheduledDeliveryDate: '',
       deliveryMethod: '',
+      procurementMethod: '',
       notes: '',
     })
     setSelectedQuote(null)
@@ -334,6 +337,9 @@ export function CreatePoDialog({ open, onOpenChange, onSuccess }: CreatePoDialog
       }
       if (data.deliveryMethod) {
         payload.deliveryMethod = data.deliveryMethod
+      }
+      if (data.procurementMethod) {
+        payload.procurementMethod = data.procurementMethod
       }
       if (data.notes) {
         payload.notes = data.notes
@@ -730,6 +736,24 @@ export function CreatePoDialog({ open, onOpenChange, onSuccess }: CreatePoDialog
                 <span className="text-xl font-bold text-foreground">
                   {formatCurrency(grandTotal)}
                 </span>
+              </div>
+
+              {/* Procurement Method */}
+              <div className="space-y-2">
+                <Label htmlFor="manual-procurement-method">Procurement Method</Label>
+                <Select
+                  onValueChange={(val) => manualForm.setValue('procurementMethod', val)}
+                >
+                  <SelectTrigger id="manual-procurement-method">
+                    <SelectValue placeholder="Select procurement method" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="COMPETITIVE_BID">Competitive Bid</SelectItem>
+                    <SelectItem value="COOPERATIVE_CONTRACT">Cooperative Contract</SelectItem>
+                    <SelectItem value="SOLE_SOURCE">Sole Source</SelectItem>
+                    <SelectItem value="MICRO_PURCHASE">Micro Purchase</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Delivery details */}
