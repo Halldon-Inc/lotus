@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 
 type Period = '7d' | '30d' | '90d' | '1y' | 'all'
 type GroupBy = 'vendor' | 'client' | 'type' | 'month'
@@ -93,68 +94,27 @@ export async function GET(request: NextRequest) {
       ? { createdAt: { gte: sinceDate } }
       : {}
 
-    // Core aggregations in parallel
+    const poDateFilter = sinceDate
+      ? { purchaseOrder: { createdAt: { gte: sinceDate } } }
+      : {}
+
+    // Use Prisma aggregations instead of loading all records into memory
     const [
-      allPOs,
-      allPOItems,
-      allClients,
+      poAggregate,
       totalPOCount,
       fulfilledPOCount,
+      totalItemCount,
+      activeVendorCount,
+      clientGrouped,
+      typeGrouped,
+      monthlyGrouped,
+      budgetClients,
     ] = await Promise.all([
-      prisma.purchaseOrder.findMany({
+      // Summary: total spend and average order value
+      prisma.purchaseOrder.aggregate({
         where: dateFilter,
-        include: {
-          client: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-              spendingLimit: true,
-            },
-          },
-          items: {
-            select: {
-              id: true,
-              vendorName: true,
-              quantity: true,
-              status: true,
-              purchasedAt: true,
-              receivedAt: true,
-              expectedDeliveryDate: true,
-            },
-          },
-        },
-      }),
-      prisma.purchaseOrderItem.findMany({
-        where: {
-          purchaseOrder: dateFilter,
-        },
-        select: {
-          vendorName: true,
-          status: true,
-          quantity: true,
-          purchaseOrder: {
-            select: {
-              totalAmount: true,
-              createdAt: true,
-            },
-          },
-          quoteLineItem: {
-            select: {
-              vendorName: true,
-              unitPrice: true,
-              totalPrice: true,
-            },
-          },
-        },
-      }),
-      prisma.client.findMany({
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          spendingLimit: true,
-        },
+        _sum: { totalAmount: true },
+        _avg: { totalAmount: true },
       }),
       prisma.purchaseOrder.count({ where: dateFilter }),
       prisma.purchaseOrder.count({
@@ -163,155 +123,180 @@ export async function GET(request: NextRequest) {
           status: { in: ['FULFILLED', 'DELIVERED'] },
         },
       }),
+      prisma.purchaseOrderItem.count({
+        where: poDateFilter,
+      }),
+      // Unique active vendor count
+      prisma.purchaseOrderItem.groupBy({
+        by: ['vendorName'],
+        where: {
+          ...poDateFilter,
+          vendorName: { not: null },
+        },
+      }).then((results) => results.length),
+      // Client breakdown: group POs by clientId with spend totals
+      prisma.purchaseOrder.groupBy({
+        by: ['clientId'],
+        where: dateFilter,
+        _sum: { totalAmount: true },
+        _count: { id: true },
+        orderBy: { _sum: { totalAmount: 'desc' } },
+        take: 10,
+      }),
+      // Type breakdown via raw query (needs client join)
+      prisma.$queryRaw<Array<{ type: string; totalSpend: number; clientCount: number }>>`
+        SELECT c."type",
+               COALESCE(SUM(po."totalAmount"), 0)::float AS "totalSpend",
+               COUNT(DISTINCT po."clientId")::int AS "clientCount"
+        FROM purchase_orders po
+        JOIN clients c ON c.id = po."clientId"
+        ${sinceDate ? Prisma.sql`WHERE po."createdAt" >= ${sinceDate}` : Prisma.empty}
+        GROUP BY c."type"
+        ORDER BY "totalSpend" DESC
+      `,
+      // Monthly breakdown via raw query for date_trunc
+      prisma.$queryRaw<Array<{ month: string; totalSpend: number; orderCount: number }>>`
+        SELECT to_char(date_trunc('month', "createdAt"), 'YYYY-MM') AS "month",
+               COALESCE(SUM("totalAmount"), 0)::float AS "totalSpend",
+               COUNT(*)::int AS "orderCount"
+        FROM purchase_orders
+        ${sinceDate ? Prisma.sql`WHERE "createdAt" >= ${sinceDate}` : Prisma.empty}
+        GROUP BY date_trunc('month', "createdAt")
+        ORDER BY "month" ASC
+      `,
+      // Budget utilization: clients with spending limits + their spend in period
+      prisma.$queryRaw<Array<{
+        clientId: string
+        clientName: string
+        clientType: string
+        spent: number
+        limit: number
+      }>>`
+        SELECT c.id AS "clientId",
+               c."name" AS "clientName",
+               c."type" AS "clientType",
+               COALESCE(po_sum.spent, 0)::float AS "spent",
+               c."spendingLimit"::float AS "limit"
+        FROM clients c
+        LEFT JOIN (
+          SELECT "clientId", SUM("totalAmount") AS spent
+          FROM purchase_orders
+          ${sinceDate ? Prisma.sql`WHERE "createdAt" >= ${sinceDate}` : Prisma.empty}
+          GROUP BY "clientId"
+        ) po_sum ON po_sum."clientId" = c.id
+        WHERE c."spendingLimit" IS NOT NULL AND c."spendingLimit" > 0
+        ORDER BY (COALESCE(po_sum.spent, 0) / c."spendingLimit") DESC
+        LIMIT 50
+      `,
     ])
 
-    // Calculate total spend
-    const totalSpend = allPOs.reduce((sum, po) => sum + po.totalAmount, 0)
-    const totalItems = allPOItems.length
-    const averageOrderValue = totalPOCount > 0 ? totalSpend / totalPOCount : 0
+    const totalSpend = poAggregate._sum.totalAmount || 0
+    const averageOrderValue = poAggregate._avg.totalAmount || 0
     const fulfillmentRate = totalPOCount > 0
       ? Math.round((fulfilledPOCount / totalPOCount) * 100)
       : 0
 
-    // Spend by vendor (from PO items, falling back to quote line items)
-    const vendorMap = new Map<string, VendorSpend>()
-    for (const po of allPOs) {
-      for (const item of po.items) {
-        const vendor = item.vendorName || 'Unknown Vendor'
-        const existing = vendorMap.get(vendor) || {
-          vendorName: vendor,
-          totalSpend: 0,
-          orderCount: 0,
-          itemCount: 0,
-        }
-        existing.itemCount += 1
-        vendorMap.set(vendor, existing)
+    // Vendor spend via bounded raw query (top 10 by item count)
+    // Proportionally attributes each PO's totalAmount across its vendors by item count
+    const vendorSpendRows = await prisma.$queryRaw<Array<{
+      vendorName: string
+      totalSpend: number
+      orderCount: number
+      itemCount: number
+    }>>`
+      SELECT
+        v."vendorName",
+        COALESCE(SUM(v.share), 0)::float AS "totalSpend",
+        COUNT(DISTINCT v."purchaseOrderId")::int AS "orderCount",
+        SUM(v."vendorItemCount")::int AS "itemCount"
+      FROM (
+        SELECT
+          COALESCE(poi."vendorName", 'Unknown Vendor') AS "vendorName",
+          poi."purchaseOrderId",
+          COUNT(*) AS "vendorItemCount",
+          po."totalAmount" * COUNT(*)::float / GREATEST(po_totals."itemCount", 1)::float AS share
+        FROM purchase_order_items poi
+        JOIN purchase_orders po ON po.id = poi."purchaseOrderId"
+        JOIN (
+          SELECT "purchaseOrderId", COUNT(*) AS "itemCount"
+          FROM purchase_order_items
+          GROUP BY "purchaseOrderId"
+        ) po_totals ON po_totals."purchaseOrderId" = po.id
+        ${sinceDate ? Prisma.sql`WHERE po."createdAt" >= ${sinceDate}` : Prisma.empty}
+        GROUP BY COALESCE(poi."vendorName", 'Unknown Vendor'), poi."purchaseOrderId", po."totalAmount", po_totals."itemCount"
+      ) v
+      GROUP BY v."vendorName"
+      ORDER BY "itemCount" DESC
+      LIMIT 10
+    `
+
+    const vendorSpend: VendorSpend[] = vendorSpendRows.map((row) => ({
+      vendorName: row.vendorName,
+      totalSpend: row.totalSpend,
+      orderCount: row.orderCount,
+      itemCount: row.itemCount,
+    }))
+
+    // Build client spend from grouped data, enrich with client details
+    const clientIds = clientGrouped.map((c) => c.clientId)
+    const clientDetails = clientIds.length > 0
+      ? await prisma.client.findMany({
+          where: { id: { in: clientIds } },
+          select: { id: true, name: true, type: true, spendingLimit: true },
+        })
+      : []
+    const clientDetailMap = new Map(clientDetails.map((c) => [c.id, c]))
+
+    const clientSpend: ClientSpend[] = clientGrouped.map((row) => {
+      const client = clientDetailMap.get(row.clientId)
+      const spend = row._sum.totalAmount || 0
+      const limit = client?.spendingLimit || null
+      return {
+        clientId: row.clientId,
+        clientName: client?.name || 'Unknown',
+        clientType: client?.type || 'Unknown',
+        totalSpend: spend,
+        orderCount: row._count.id,
+        spendingLimit: limit,
+        budgetUsed: limit && limit > 0
+          ? Math.round((spend / limit) * 100)
+          : null,
       }
-    }
+    })
 
-    // Attribute PO spend proportionally across vendors in each PO
-    for (const po of allPOs) {
-      const vendorsInPO = new Map<string, number>()
-      for (const item of po.items) {
-        const vendor = item.vendorName || 'Unknown Vendor'
-        vendorsInPO.set(vendor, (vendorsInPO.get(vendor) || 0) + 1)
-      }
-      const totalItemsInPO = po.items.length || 1
-      for (const [vendor, count] of Array.from(vendorsInPO.entries())) {
-        const existing = vendorMap.get(vendor)
-        if (existing) {
-          existing.totalSpend += (po.totalAmount * count) / totalItemsInPO
-          existing.orderCount += 1
-        }
-      }
-    }
+    // Type spend from raw query result
+    const typeSpend: TypeSpend[] = typeGrouped.map((row) => ({
+      type: row.type,
+      totalSpend: row.totalSpend,
+      clientCount: row.clientCount,
+    }))
 
-    const vendorSpend = Array.from(vendorMap.values())
-      .sort((a, b) => b.totalSpend - a.totalSpend)
-      .slice(0, 10)
+    // Monthly spend from raw query result
+    const monthlySpend: MonthlySpend[] = monthlyGrouped.map((row) => ({
+      month: row.month,
+      totalSpend: row.totalSpend,
+      orderCount: row.orderCount,
+    }))
 
-    // Unique active vendors
-    const uniqueVendors = new Set<string>()
-    for (const item of allPOItems) {
-      const vendor = item.vendorName || item.quoteLineItem?.vendorName
-      if (vendor) uniqueVendors.add(vendor)
-    }
-
-    // Spend by client
-    const clientMap = new Map<string, ClientSpend>()
-    for (const po of allPOs) {
-      const existing = clientMap.get(po.client.id) || {
-        clientId: po.client.id,
-        clientName: po.client.name,
-        clientType: po.client.type,
-        totalSpend: 0,
-        orderCount: 0,
-        spendingLimit: po.client.spendingLimit,
-        budgetUsed: null,
-      }
-      existing.totalSpend += po.totalAmount
-      existing.orderCount += 1
-      if (existing.spendingLimit && existing.spendingLimit > 0) {
-        existing.budgetUsed = Math.round(
-          (existing.totalSpend / existing.spendingLimit) * 100
-        )
-      }
-      clientMap.set(po.client.id, existing)
-    }
-
-    const clientSpend = Array.from(clientMap.values())
-      .sort((a, b) => b.totalSpend - a.totalSpend)
-      .slice(0, 10)
-
-    // Spend by client type
-    const typeMap = new Map<string, TypeSpend>()
-    for (const po of allPOs) {
-      const clientType = po.client.type
-      const existing = typeMap.get(clientType) || {
-        type: clientType,
-        totalSpend: 0,
-        clientCount: 0,
-      }
-      existing.totalSpend += po.totalAmount
-      typeMap.set(clientType, existing)
-    }
-    // Count unique clients per type
-    const clientsByType = new Map<string, Set<string>>()
-    for (const po of allPOs) {
-      const typeClients = clientsByType.get(po.client.type) || new Set()
-      typeClients.add(po.client.id)
-      clientsByType.set(po.client.type, typeClients)
-    }
-    for (const [type, clients] of Array.from(clientsByType.entries())) {
-      const existing = typeMap.get(type)
-      if (existing) existing.clientCount = clients.size
-    }
-    const typeSpend = Array.from(typeMap.values())
-      .sort((a, b) => b.totalSpend - a.totalSpend)
-
-    // Spend over time (monthly)
-    const monthMap = new Map<string, MonthlySpend>()
-    for (const po of allPOs) {
-      const date = new Date(po.createdAt)
-      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
-      const existing = monthMap.get(monthKey) || {
-        month: monthKey,
-        totalSpend: 0,
-        orderCount: 0,
-      }
-      existing.totalSpend += po.totalAmount
-      existing.orderCount += 1
-      monthMap.set(monthKey, existing)
-    }
-    const monthlySpend = Array.from(monthMap.values())
-      .sort((a, b) => a.month.localeCompare(b.month))
-
-    // Budget utilization per client (all clients with spending limits)
-    const budgetUtilization = allClients
-      .filter((c) => c.spendingLimit && c.spendingLimit > 0)
-      .map((client) => {
-        const spent = clientMap.get(client.id)?.totalSpend || 0
-        const limit = client.spendingLimit as number
-        return {
-          clientId: client.id,
-          clientName: client.name,
-          clientType: client.type,
-          spent,
-          limit,
-          utilization: Math.round((spent / limit) * 100),
-          remaining: limit - spent,
-        }
-      })
-      .sort((a, b) => b.utilization - a.utilization)
+    // Budget utilization from raw query result
+    const budgetUtilization = budgetClients.map((row) => ({
+      clientId: row.clientId,
+      clientName: row.clientName,
+      clientType: row.clientType,
+      spent: row.spent,
+      limit: row.limit,
+      utilization: Math.round((row.spent / row.limit) * 100),
+      remaining: row.limit - row.spent,
+    }))
 
     const analytics = {
       summary: {
         totalSpend,
         averageOrderValue,
-        activeVendors: uniqueVendors.size,
+        activeVendors: activeVendorCount,
         fulfillmentRate,
         totalPOs: totalPOCount,
-        totalItems,
+        totalItems: totalItemCount,
       },
       vendorSpend,
       clientSpend,

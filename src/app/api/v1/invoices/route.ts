@@ -135,6 +135,37 @@ export async function POST(request: NextRequest) {
 
     const data = validation.data
 
+    // Check for duplicate invoices (bypass with ?force=true)
+    const url = new URL(request.url)
+    const force = url.searchParams.get('force') === 'true'
+
+    if (!force) {
+      const potentialDuplicate = await prisma.invoice.findFirst({
+        where: {
+          vendorName: data.vendorName,
+          totalAmount: {
+            gte: data.totalAmount * 0.99,
+            lte: data.totalAmount * 1.01,
+          },
+          receivedAt: {
+            gte: new Date(new Date(data.receivedAt || Date.now()).getTime() - 3 * 24 * 60 * 60 * 1000),
+            lte: new Date(new Date(data.receivedAt || Date.now()).getTime() + 3 * 24 * 60 * 60 * 1000),
+          },
+        },
+      })
+
+      if (potentialDuplicate) {
+        return NextResponse.json(
+          {
+            error: 'Potential duplicate invoice detected',
+            existingInvoice: { id: potentialDuplicate.id, invoiceNumber: potentialDuplicate.invoiceNumber },
+            message: 'An invoice from the same vendor with a similar amount was found within 3 days. Add ?force=true to override.',
+          },
+          { status: 409 }
+        )
+      }
+    }
+
     // Verify PO exists if provided
     if (data.purchaseOrderId) {
       const po = await prisma.purchaseOrder.findUnique({

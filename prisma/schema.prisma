@@ -45,6 +45,7 @@ model User {
   attachments           Attachment[] @relation("UserAttachments")
   rfqs                  RFQ[]        @relation("RFQCreator")
   approvedChangeOrders  ChangeOrder[] @relation("ChangeOrderApprover")
+  approvedVendors       VendorProfile[] @relation("VendorApprover")
 
   @@map("users")
 }
@@ -81,6 +82,10 @@ model Client {
   budgets         Budget[]
   contracts       Contract[]
   rfqs            RFQ[]
+  taxExempt             Boolean   @default(false)
+  taxExemptCertNumber   String?
+  taxExemptExpiry       DateTime?
+  matchingTolerancePct  Float     @default(5.0)
 
   @@map("clients")
 }
@@ -200,6 +205,8 @@ model PurchaseOrder {
   clientInvoices  ClientInvoice[]
   rmas            RMA[]
   changeOrders    ChangeOrder[]
+  taxAmount       Float         @default(0)
+  taxExemptApplied Boolean      @default(false)
   isBlanketPO     Boolean       @default(false)
   blanketTotal    Float?
   blanketUsed     Float?
@@ -213,7 +220,7 @@ model PurchaseOrderItem {
   purchaseOrderId       String
   quoteLineItemId       String?
   quantity              Int
-  status                String   @default("PENDING") // PENDING, SOURCED, PURCHASED, SHIPPED, RECEIVED, MISSING, CANCELLED
+  status                String   @default("PENDING") // PENDING, SOURCED, PURCHASED, SHIPPED, RECEIVED, MISSING, CANCELLED, BACKORDERED
   sourcedById           String?
   sourcedAt             DateTime?
   sourceUrl             String?
@@ -236,6 +243,9 @@ model PurchaseOrderItem {
   purchasedBy           User?          @relation("ItemPurchaser", fields: [purchasedById], references: [id])
   discrepancies         Discrepancy[]
   shipmentItems         ShipmentItem[]
+  backorderExpectedDate DateTime?
+  substituteItemName    String?
+  substituteApproved    Boolean?
 
   @@map("purchase_order_items")
 }
@@ -672,4 +682,25 @@ model VendorScorecard {
   updatedAt       DateTime @updatedAt
   @@unique([vendorName, period])
   @@map("vendor_scorecards")
+}
+
+model VendorProfile {
+  id                  String    @id @default(cuid())
+  vendorName          String    @unique
+  contactName         String?
+  contactEmail        String?
+  contactPhone        String?
+  w9Status            String    @default("NOT_SUBMITTED")
+  w9FileUrl           String?
+  insuranceExpiry     DateTime?
+  insuranceFileUrl    String?
+  certifications      String?
+  approvedAt          DateTime?
+  approvedById        String?
+  status              String    @default("PENDING")
+  notes               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  approvedBy          User?     @relation("VendorApprover", fields: [approvedById], references: [id])
+  @@map("vendor_profiles")
 }

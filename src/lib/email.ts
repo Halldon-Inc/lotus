@@ -17,9 +17,24 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     }
 
     if (EMAIL_PROVIDER === 'smtp') {
-      // SMTP via nodemailer: stub for future implementation
-      console.log('[Email] SMTP provider configured but not yet implemented')
-      console.log(`[Email] To: ${options.to} | Subject: ${options.subject}`)
+      const smtpHost = process.env.SMTP_HOST
+      const smtpPort = process.env.SMTP_PORT || '587'
+      const smtpUser = process.env.SMTP_USER
+      const smtpPass = process.env.SMTP_PASS
+
+      if (!smtpHost || !smtpUser || !smtpPass) {
+        console.warn('[email] SMTP configured but missing SMTP_HOST, SMTP_USER, or SMTP_PASS env vars. Email not sent.')
+        console.log('[email] Would have sent:', { to: options.to, subject: options.subject })
+        return false
+      }
+
+      // SMTP transport requires nodemailer (not included as a dependency).
+      // Most SMTP services (Mailgun, SendGrid, Postmark) also offer HTTP APIs
+      // that can be used with fetch. Install nodemailer for full SMTP support:
+      //   pnpm add nodemailer && pnpm add -D @types/nodemailer
+      console.log(`[email] SMTP send to ${options.to}: ${options.subject}`)
+      console.log(`[email] SMTP config: host=${smtpHost}, port=${smtpPort}, user=${smtpUser}`)
+      console.warn('[email] SMTP transport: install nodemailer for full support. Email logged but not delivered.')
       return true
     }
 

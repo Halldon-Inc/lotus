@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { Prisma } from '@prisma/client'
 import { createInventoryItemSchema } from '@/lib/validations'
+
+// Cap pageSize to prevent unbounded queries
+const MAX_PAGE_SIZE = 100
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,8 +20,11 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url)
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '20')
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
+    const pageSize = Math.min(
+      MAX_PAGE_SIZE,
+      Math.max(1, parseInt(searchParams.get('pageSize') || '20'))
+    )
     const sortBy = searchParams.get('sortBy') || 'name'
     const sortDirection = (searchParams.get('sortDirection') || 'asc') as 'asc' | 'desc'
     const search = searchParams.get('search') || ''
@@ -26,28 +33,88 @@ export async function GET(request: NextRequest) {
 
     const skip = (page - 1) * pageSize
 
+    // Whitelist sortBy to prevent SQL injection in the raw query path
+    const allowedSortColumns: Record<string, string> = {
+      name: '"name"',
+      sku: '"sku"',
+      category: '"category"',
+      quantityOnHand: '"quantityOnHand"',
+      reorderPoint: '"reorderPoint"',
+      unitCost: '"unitCost"',
+      createdAt: '"createdAt"',
+      updatedAt: '"updatedAt"',
+    }
+
+    if (lowStock) {
+      // Use raw query for proper column-to-column comparison in PostgreSQL
+      const conditions: Prisma.Sql[] = [
+        Prisma.sql`"reorderPoint" > 0`,
+        Prisma.sql`"quantityOnHand" <= "reorderPoint"`,
+      ]
+
+      if (search) {
+        conditions.push(
+          Prisma.sql`("name" ILIKE ${'%' + search + '%'} OR "sku" ILIKE ${'%' + search + '%'})`
+        )
+      }
+
+      if (category) {
+        conditions.push(Prisma.sql`"category" = ${category}`)
+      }
+
+      const whereClause = Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`
+      const sortCol = allowedSortColumns[sortBy] || '"name"'
+      const sortDir = sortDirection === 'desc' ? Prisma.sql`DESC` : Prisma.sql`ASC`
+
+      const [items, countResult] = await Promise.all([
+        prisma.$queryRaw<Array<Record<string, unknown>>>`
+          SELECT i.*,
+                 (SELECT COUNT(*)::int FROM inventory_movements m WHERE m."inventoryItemId" = i.id) AS "movementCount"
+          FROM inventory_items i
+          ${whereClause}
+          ORDER BY ${Prisma.raw(sortCol)} ${sortDir}
+          LIMIT ${pageSize} OFFSET ${skip}
+        `,
+        prisma.$queryRaw<Array<{ count: number }>>`
+          SELECT COUNT(*)::int AS "count"
+          FROM inventory_items
+          ${whereClause}
+        `,
+      ])
+
+      const total = countResult[0]?.count || 0
+
+      // Reshape to match the Prisma findMany output format
+      const shapedItems = items.map((item) => ({
+        ...item,
+        _count: { movements: item.movementCount || 0 },
+        movementCount: undefined,
+      }))
+
+      return NextResponse.json({
+        success: true,
+        data: {
+          items: shapedItems,
+          total,
+          page,
+          pageSize,
+          totalPages: Math.ceil(total / pageSize),
+        },
+      })
+    }
+
+    // Standard (non low-stock) path using Prisma findMany
     const where: Record<string, unknown> = {}
 
     if (search) {
       where.OR = [
-        { name: { contains: search } },
-        { sku: { contains: search } },
+        { name: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
       ]
     }
 
     if (category) {
       where.category = category
-    }
-
-    if (lowStock) {
-      // Items where quantityOnHand <= reorderPoint and reorderPoint > 0
-      where.AND = [
-        { reorderPoint: { gt: 0 } },
-        {
-          // SQLite doesn't support column-to-column comparison in Prisma where,
-          // so we fetch all with reorderPoint > 0 and filter in application
-        },
-      ]
     }
 
     const [items, total] = await Promise.all([
@@ -65,21 +132,14 @@ export async function GET(request: NextRequest) {
       prisma.inventoryItem.count({ where }),
     ])
 
-    // If lowStock filter is on, filter in application layer
-    const filteredItems = lowStock
-      ? items.filter((item) => item.quantityOnHand <= item.reorderPoint)
-      : items
-
-    const finalTotal = lowStock ? filteredItems.length : total
-
     return NextResponse.json({
       success: true,
       data: {
-        items: filteredItems,
-        total: finalTotal,
+        items,
+        total,
         page,
         pageSize,
-        totalPages: Math.ceil(finalTotal / pageSize),
+        totalPages: Math.ceil(total / pageSize),
       },
     })
   } catch (error) {

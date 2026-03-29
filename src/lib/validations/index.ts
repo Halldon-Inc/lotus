@@ -120,7 +120,7 @@ export const updatePurchaseOrderSchema = z.object({
 // Purchase Order Item validation schemas
 export const updatePurchaseOrderItemSchema = z.object({
   quantity: z.number().int().positive('Quantity must be a positive integer').optional(),
-  status: z.enum(['PENDING', 'SOURCED', 'PURCHASED', 'SHIPPED', 'RECEIVED', 'MISSING', 'CANCELLED']).optional(),
+  status: z.enum(['PENDING', 'SOURCED', 'PURCHASED', 'BACKORDERED', 'SHIPPED', 'RECEIVED', 'MISSING', 'CANCELLED']).optional(),
   sourceUrl: z.string().url('Invalid URL').optional().or(z.literal('')),
   vendorName: z.string().optional(),
   orderNumber: z.string().optional(),

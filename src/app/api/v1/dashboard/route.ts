@@ -56,6 +56,21 @@ export async function GET() {
       })
     ])
 
+    // Fiscal year budget summary
+    const currentYear = new Date().getFullYear()
+    const budgetSummary = await prisma.budget.findMany({
+      where: { fiscalYear: currentYear },
+      include: { client: { select: { name: true } } },
+    })
+
+    const fiscalSummary = {
+      totalBudget: budgetSummary.reduce((s, b) => s + b.totalBudget, 0),
+      totalEncumbered: budgetSummary.reduce((s, b) => s + b.encumbered, 0),
+      totalSpent: budgetSummary.reduce((s, b) => s + b.spent, 0),
+      totalAvailable: budgetSummary.reduce((s, b) => s + (b.totalBudget - b.encumbered - b.spent), 0),
+      clientCount: budgetSummary.length,
+    }
+
     const stats = {
       totalClients,
       totalRequests,
@@ -66,6 +81,7 @@ export async function GET() {
       overdueItems,
       totalRevenue: totalRevenue._sum.totalAmount || 0,
       recentActivity,
+      fiscalSummary,
     }
 
     return NextResponse.json({

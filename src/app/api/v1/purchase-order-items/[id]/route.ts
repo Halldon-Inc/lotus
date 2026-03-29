@@ -63,7 +63,8 @@ export async function PATCH(
     const validTransitions: Record<string, string[]> = {
       'PENDING': ['SOURCED', 'CANCELLED'],
       'SOURCED': ['PURCHASED', 'CANCELLED'],
-      'PURCHASED': ['SHIPPED', 'CANCELLED'],
+      'PURCHASED': ['SHIPPED', 'CANCELLED', 'BACKORDERED'],
+      'BACKORDERED': ['SHIPPED', 'CANCELLED', 'SOURCED'],
       'SHIPPED': ['RECEIVED', 'MISSING'],
       'RECEIVED': [],
       'MISSING': ['SOURCED', 'CANCELLED'],
