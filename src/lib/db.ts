@@ -1,8 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import fs from 'fs'
 import path from 'path'
-// Static import: forces webpack to bundle this module (dynamic require gets tree-shaken)
-import DB_BASE64 from './db-seed'
 
 const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
@@ -18,11 +16,10 @@ function getDbUrl(): string {
   const tmpDb = '/tmp/dev.db'
 
   if (fs.existsSync(tmpDb)) {
-    console.log('[db] Using existing /tmp/dev.db')
     return `file:${tmpDb}`
   }
 
-  // Try every known bundled location
+  // Try every known bundled location (outputFileTracingIncludes bundles these)
   const cwd = process.cwd()
   const sources = [
     path.join(cwd, 'prisma', 'dev.db'),
@@ -43,16 +40,25 @@ function getDbUrl(): string {
     }
   }
 
-  // Ultimate fallback: write from statically-imported base64 blob
-  try {
-    const buf = Buffer.from(DB_BASE64, 'base64')
-    fs.writeFileSync(tmpDb, buf)
-    console.log(`[db] Restored from embedded base64 (${buf.length} bytes)`)
-    return `file:${tmpDb}`
-  } catch (err) {
-    console.error('[db] All DB init methods failed:', err)
+  // Fallback: read base64 file at runtime (avoids webpack bundling 400KB string)
+  const b64Paths = [
+    path.join(cwd, 'prisma', 'dev.db.b64'),
+    '/var/task/prisma/dev.db.b64',
+  ]
+  for (const b64 of b64Paths) {
+    try {
+      if (fs.existsSync(b64)) {
+        const buf = Buffer.from(fs.readFileSync(b64, 'utf-8').trim(), 'base64')
+        fs.writeFileSync(tmpDb, buf)
+        console.log(`[db] Restored from base64 file (${buf.length} bytes)`)
+        return `file:${tmpDb}`
+      }
+    } catch (err) {
+      console.warn(`[db] Base64 fallback failed from ${b64}:`, err)
+    }
   }
 
+  console.error('[db] All DB init methods failed')
   return `file:${tmpDb}`
 }
 
