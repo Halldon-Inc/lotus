@@ -31,6 +31,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   ArrowLeft,
   ShoppingCart,
@@ -52,6 +54,9 @@ import {
   PackageCheck,
   RotateCcw,
   XCircle,
+  Paperclip,
+  Trash2,
+  Download,
 } from 'lucide-react'
 import { formatCurrency, formatDate, formatRelativeTime, getInitials } from '@/lib/utils'
 import Link from 'next/link'
@@ -113,6 +118,23 @@ interface PODetail {
   notes: NoteWithUser[]
 }
 
+interface AttachmentRecord {
+  id: string
+  entityType: string
+  entityId: string
+  fileName: string
+  fileUrl: string
+  fileSize: number | null
+  mimeType: string | null
+  uploadedById: string
+  createdAt: string
+  uploadedBy: {
+    id: string
+    name: string
+    email: string
+  }
+}
+
 const ITEM_STATUS_OPTIONS = [
   { value: 'PENDING', label: 'Pending' },
   { value: 'SOURCED', label: 'Sourced' },
@@ -140,6 +162,13 @@ export default function OrderDetailPage() {
   const [rejectionReason, setRejectionReason] = useState('')
   const [rejecting, setRejecting] = useState(false)
   const [resubmitting, setResubmitting] = useState(false)
+  const [attachments, setAttachments] = useState<AttachmentRecord[]>([])
+  const [attachDialogOpen, setAttachDialogOpen] = useState(false)
+  const [attachFileName, setAttachFileName] = useState('')
+  const [attachFileUrl, setAttachFileUrl] = useState('')
+  const [attachNotes, setAttachNotes] = useState('')
+  const [attachingFile, setAttachingFile] = useState(false)
+  const [deletingAttachmentId, setDeletingAttachmentId] = useState<string | null>(null)
 
   const orderId = params.id as string
 
@@ -162,9 +191,76 @@ export default function OrderDetailPage() {
     }
   }, [orderId])
 
+  const fetchAttachments = useCallback(async () => {
+    try {
+      const response = await fetch(
+        `/api/v1/attachments?entityType=PURCHASE_ORDER&entityId=${orderId}`
+      )
+      const result: ApiResponse<{ items: AttachmentRecord[] }> = await response.json()
+      if (result.success && result.data) {
+        setAttachments(result.data.items)
+      }
+    } catch (err) {
+      console.error('Failed to load attachments:', err)
+    }
+  }, [orderId])
+
   useEffect(() => {
     fetchOrder()
-  }, [fetchOrder])
+    fetchAttachments()
+  }, [fetchOrder, fetchAttachments])
+
+  const addAttachment = async () => {
+    if (!attachFileName.trim() || !attachFileUrl.trim()) return
+    try {
+      setAttachingFile(true)
+      const body: Record<string, unknown> = {
+        entityType: 'PURCHASE_ORDER',
+        entityId: orderId,
+        fileName: attachFileName.trim(),
+        fileUrl: attachFileUrl.trim(),
+      }
+      // If the user entered notes, append them to the file name for reference
+      // (notes are informational only, stored as part of the file name)
+      if (attachNotes.trim()) {
+        body.fileName = `${attachFileName.trim()} [${attachNotes.trim()}]`
+      }
+      const response = await fetch('/api/v1/attachments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const result: ApiResponse = await response.json()
+      if (result.success) {
+        setAttachDialogOpen(false)
+        setAttachFileName('')
+        setAttachFileUrl('')
+        setAttachNotes('')
+        fetchAttachments()
+      }
+    } catch (err) {
+      console.error('Failed to add attachment:', err)
+    } finally {
+      setAttachingFile(false)
+    }
+  }
+
+  const deleteAttachment = async (attachmentId: string) => {
+    try {
+      setDeletingAttachmentId(attachmentId)
+      const response = await fetch(`/api/v1/attachments/${attachmentId}`, {
+        method: 'DELETE',
+      })
+      const result: ApiResponse = await response.json()
+      if (result.success) {
+        fetchAttachments()
+      }
+    } catch (err) {
+      console.error('Failed to delete attachment:', err)
+    } finally {
+      setDeletingAttachmentId(null)
+    }
+  }
 
   const verifyOrder = async () => {
     try {
@@ -850,6 +946,146 @@ export default function OrderDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Attachments */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center space-x-2">
+              <Paperclip className="h-5 w-5 text-primary" />
+              <span>Attachments</span>
+              {attachments.length > 0 && (
+                <Badge variant="secondary" className="ml-2">{attachments.length}</Badge>
+              )}
+            </CardTitle>
+            <Button
+              className="lotus-button"
+              size="sm"
+              onClick={() => setAttachDialogOpen(true)}
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              Attach File
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {attachments.length === 0 ? (
+            <EmptyState
+              icon={<Paperclip className="h-6 w-6 text-muted-foreground" />}
+              title="No attachments"
+              description="Attach documents, receipts, or other files to this purchase order."
+              className="py-6"
+            />
+          ) : (
+            <div className="space-y-2">
+              {attachments.map((attachment) => {
+                const canDelete =
+                  session?.user.role &&
+                  (['ADMIN', 'MANAGER'].includes(session.user.role) ||
+                    attachment.uploadedById === session.user.id)
+
+                return (
+                  <div
+                    key={attachment.id}
+                    className="flex items-center justify-between rounded-lg border p-3 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <FileText className="h-5 w-5 text-primary shrink-0" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{attachment.fileName}</p>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>Uploaded by {attachment.uploadedBy.name}</span>
+                          <span>{formatDate(attachment.createdAt)}</span>
+                          {attachment.fileSize && (
+                            <span>{(attachment.fileSize / 1024).toFixed(1)} KB</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <Button variant="ghost" size="sm" asChild>
+                        <a
+                          href={attachment.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Download className="h-4 w-4" />
+                        </a>
+                      </Button>
+                      {canDelete && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                          onClick={() => deleteAttachment(attachment.id)}
+                          disabled={deletingAttachmentId === attachment.id}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Attach File Dialog */}
+      <Dialog open={attachDialogOpen} onOpenChange={setAttachDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Attach File</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Add a reference to an external file or document. Cloud upload support coming soon.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="attach-file-name">File Name</Label>
+              <Input
+                id="attach-file-name"
+                placeholder="Invoice_2026_03.pdf"
+                value={attachFileName}
+                onChange={(e) => setAttachFileName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="attach-file-url">File URL</Label>
+              <Input
+                id="attach-file-url"
+                placeholder="https://drive.google.com/file/d/..."
+                value={attachFileUrl}
+                onChange={(e) => setAttachFileUrl(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="attach-notes">Notes (optional)</Label>
+              <Textarea
+                id="attach-notes"
+                placeholder="Any additional context about this file..."
+                value={attachNotes}
+                onChange={(e) => setAttachNotes(e.target.value)}
+                rows={2}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setAttachDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="lotus-button"
+                onClick={addAttachment}
+                disabled={attachingFile || !attachFileName.trim() || !attachFileUrl.trim()}
+              >
+                <Paperclip className="mr-2 h-4 w-4" />
+                {attachingFile ? 'Attaching...' : 'Attach'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Rejection Dialog */}
       <Dialog open={rejectionDialogOpen} onOpenChange={setRejectionDialogOpen}>

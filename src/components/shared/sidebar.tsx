@@ -29,6 +29,7 @@ import {
   CheckSquare,
   AlertTriangle,
   Upload,
+  Wallet,
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -106,6 +107,12 @@ const navigationItems = [
     label: 'Analytics',
     href: '/analytics',
     icon: PieChart,
+    roles: ['ADMIN', 'MANAGER'],
+  },
+  {
+    label: 'Budgets',
+    href: '/budgets',
+    icon: Wallet,
     roles: ['ADMIN', 'MANAGER'],
   },
   {

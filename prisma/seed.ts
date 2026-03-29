@@ -26,6 +26,7 @@ async function main() {
   await prisma.quoteLineItem.deleteMany()
   await prisma.quote.deleteMany()
   await prisma.request.deleteMany()
+  await prisma.budget.deleteMany()
   await prisma.client.deleteMany()
   await prisma.user.deleteMany()
 
@@ -749,6 +750,69 @@ async function main() {
     })
   }
   console.log('✓ Created client invoices')
+
+  // Budgets (fiscal year 2026 allocations for various clients)
+  const budgetData = [
+    {
+      clientId: clients[0].id, // NYC Department of Education
+      fiscalYear: 2026,
+      totalBudget: 500000,
+      encumbered: 120000,
+      spent: 85000,
+      department: 'Procurement',
+      notes: 'Annual office and classroom supply allocation for FY2026',
+    },
+    {
+      clientId: clients[1].id, // Columbia University
+      fiscalYear: 2026,
+      totalBudget: 750000,
+      encumbered: 210000,
+      spent: 195000,
+      department: 'Facilities',
+      notes: 'Campus furniture and technology refresh program',
+    },
+    {
+      clientId: clients[3].id, // Hunter College
+      fiscalYear: 2026,
+      totalBudget: 400000,
+      encumbered: 175000,
+      spent: 180000,
+      department: 'IT',
+      notes: 'Computer lab upgrades and AV equipment. High utilization expected.',
+    },
+    {
+      clientId: clients[6].id, // Bronx Community Health Network
+      fiscalYear: 2026,
+      totalBudget: 250000,
+      encumbered: 45000,
+      spent: 62000,
+      department: 'Operations',
+      notes: 'Medical office supplies and cleaning materials',
+    },
+    {
+      clientId: clients[8].id, // Pace University
+      fiscalYear: 2026,
+      totalBudget: 600000,
+      encumbered: 90000,
+      spent: 55000,
+      department: 'General',
+      notes: 'Consolidated departmental procurement budget',
+    },
+    {
+      clientId: clients[2].id, // Brooklyn Public Library
+      fiscalYear: 2026,
+      totalBudget: 200000,
+      encumbered: 30000,
+      spent: 22000,
+      department: 'Collections',
+      notes: 'Shelving, furniture, and facility maintenance supplies',
+    },
+  ]
+
+  for (const bd of budgetData) {
+    await prisma.budget.create({ data: bd })
+  }
+  console.log('✓ Created budgets')
 
   console.log('🎉 Seeding completed successfully!')
 }
