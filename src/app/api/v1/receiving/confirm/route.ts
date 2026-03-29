@@ -69,10 +69,7 @@ export async function PUT(request: NextRequest) {
 
         // Cap: cumulative received quantity cannot exceed ordered quantity
         if (newTotalReceived > existingItem.quantity) {
-          return NextResponse.json(
-            { error: `Cannot receive ${item.receivedQuantity} units. Only ${existingItem.quantity - previouslyReceived} remaining.` },
-            { status: 400 }
-          )
+          throw new Error(`Cannot receive ${item.receivedQuantity} units for item ${item.id}. Only ${existingItem.quantity - previouslyReceived} remaining.`)
         }
 
         const isFullyReceived = newTotalReceived >= existingItem.quantity
@@ -256,9 +253,11 @@ export async function PUT(request: NextRequest) {
     })
   } catch (error) {
     console.error('Receiving confirm error:', error)
+    const message = error instanceof Error ? error.message : 'Internal server error'
+    const isValidation = message.startsWith('Cannot receive')
     return NextResponse.json(
-      { success: false, error: 'Internal server error' },
-      { status: 500 }
+      { success: false, error: message },
+      { status: isValidation ? 400 : 500 }
     )
   }
 }
