@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendEmail } from '@/lib/email'
 import { createRequestSchema } from '@/lib/validations'
 import type { Prisma } from '@prisma/client'
 
@@ -212,6 +213,15 @@ export async function POST(request: NextRequest) {
         }),
       },
     })
+
+    // Notify assigned rep about the new request
+    if (newRequest.assignedTo?.email) {
+      sendEmail(
+        newRequest.assignedTo.email,
+        `New request assigned: ${newRequest.subject}`,
+        `<p>A new request <strong>${newRequest.subject}</strong> has been assigned to you from ${newRequest.client?.name || 'a client'}.</p>`
+      ).catch(console.error)
+    }
 
     return NextResponse.json({
       success: true,

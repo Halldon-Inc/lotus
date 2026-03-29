@@ -6,7 +6,9 @@ import { useSession } from 'next-auth/react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -14,6 +16,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import {
   Table,
   TableBody,
@@ -40,6 +50,7 @@ import {
   UserPlus,
   AlertCircle,
   CheckCircle,
+  Edit3,
 } from 'lucide-react'
 import { formatDate, formatRelativeTime, formatCurrency, getInitials } from '@/lib/utils'
 import Link from 'next/link'
@@ -103,6 +114,9 @@ export default function RequestDetailPage() {
   const [updatingAssignee, setUpdatingAssignee] = useState(false)
   const [newNote, setNewNote] = useState('')
   const [addingNote, setAddingNote] = useState(false)
+  const [editDialogOpen, setEditDialogOpen] = useState(false)
+  const [editForm, setEditForm] = useState({ subject: '', description: '', priority: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const requestId = params.id as string
 
@@ -205,6 +219,41 @@ export default function RequestDetailPage() {
     }
   }
 
+  const openEditDialog = () => {
+    if (!request) return
+    setEditForm({
+      subject: request.subject,
+      description: request.description,
+      priority: request.priority,
+    })
+    setEditDialogOpen(true)
+  }
+
+  const saveEdit = async () => {
+    if (!editForm.subject.trim() || !editForm.description.trim()) return
+    try {
+      setSavingEdit(true)
+      const response = await fetch(`/api/v1/requests/${requestId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: editForm.subject.trim(),
+          description: editForm.description.trim(),
+          priority: editForm.priority,
+        }),
+      })
+      const result: ApiResponse = await response.json()
+      if (result.success) {
+        setEditDialogOpen(false)
+        fetchRequest()
+      }
+    } catch (err) {
+      console.error('Failed to update request:', err)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'URGENT': return 'bg-red-100 text-red-800'
@@ -274,6 +323,10 @@ export default function RequestDetailPage() {
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={openEditDialog}>
+              <Edit3 className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
             <Button variant="outline" asChild>
               <Link href={`/quotes?requestId=${request.id}`}>
                 <Receipt className="mr-2 h-4 w-4" />
@@ -571,6 +624,74 @@ export default function RequestDetailPage() {
           </Card>
         </div>
       </div>
+
+      {/* Edit Request Dialog */}
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[525px]">
+          <DialogHeader>
+            <DialogTitle>Edit Request</DialogTitle>
+            <DialogDescription>
+              Update the subject, description, and priority for this request.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-subject">Subject</Label>
+              <Input
+                id="edit-subject"
+                value={editForm.subject}
+                onChange={(e) => setEditForm({ ...editForm, subject: e.target.value })}
+                placeholder="Request subject"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-description">Description</Label>
+              <Textarea
+                id="edit-description"
+                value={editForm.description}
+                onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                placeholder="Request description"
+                rows={5}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-priority">Priority</Label>
+              <Select
+                value={editForm.priority}
+                onValueChange={(val) => setEditForm({ ...editForm, priority: val })}
+              >
+                <SelectTrigger id="edit-priority">
+                  <SelectValue placeholder="Select priority" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="LOW">Low</SelectItem>
+                  <SelectItem value="MEDIUM">Medium</SelectItem>
+                  <SelectItem value="HIGH">High</SelectItem>
+                  <SelectItem value="URGENT">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setEditDialogOpen(false)}
+              disabled={savingEdit}
+            >
+              Cancel
+            </Button>
+            <Button
+              className="lotus-button"
+              onClick={saveEdit}
+              disabled={savingEdit || !editForm.subject.trim() || !editForm.description.trim()}
+            >
+              {savingEdit ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

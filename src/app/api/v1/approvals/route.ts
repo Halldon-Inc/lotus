@@ -55,6 +55,14 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Safety net: always restrict non-admin/manager users to their own approvals
+    if (!['ADMIN', 'MANAGER'].includes(session.user.role)) {
+      where.OR = [
+        { requestedById: session.user.id },
+        { approverId: session.user.id },
+      ]
+    }
+
     const [approvals, total] = await Promise.all([
       prisma.approvalRequest.findMany({
         where,

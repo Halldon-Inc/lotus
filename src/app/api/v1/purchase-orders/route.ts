@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendEmail } from '@/lib/email'
+import { poReceived } from '@/lib/email-templates'
 import { createPurchaseOrderSchema, createManualPurchaseOrderSchema } from '@/lib/validations'
 import type { Prisma } from '@prisma/client'
 
@@ -230,6 +232,19 @@ export async function POST(request: NextRequest) {
         },
       })
 
+      // Notify client contact that PO was received
+      const manualClient = await prisma.client.findUnique({
+        where: { id: data.clientId },
+        select: { contactEmail: true, contactName: true, name: true },
+      })
+      if (manualClient?.contactEmail) {
+        const template = poReceived(
+          manualClient.contactName || manualClient.name,
+          purchaseOrder.poNumber
+        )
+        sendEmail(manualClient.contactEmail, template.subject, template.html).catch(console.error)
+      }
+
       return NextResponse.json({
         success: true,
         data: purchaseOrder,
@@ -347,6 +362,15 @@ export async function POST(request: NextRequest) {
         }),
       },
     })
+
+    // Notify client contact that PO was received
+    if (quote.client?.contactEmail) {
+      const template = poReceived(
+        quote.client.contactName || quote.client.name,
+        purchaseOrder.poNumber
+      )
+      sendEmail(quote.client.contactEmail, template.subject, template.html).catch(console.error)
+    }
 
     return NextResponse.json({
       success: true,

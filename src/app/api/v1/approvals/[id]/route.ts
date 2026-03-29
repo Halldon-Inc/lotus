@@ -70,10 +70,10 @@ export async function PUT(
     const { id } = await params
     const session = await getServerSession(authOptions)
 
-    if (!session || !['ADMIN', 'MANAGER'].includes(session.user.role)) {
+    if (!session) {
       return NextResponse.json(
         { success: false, error: 'Unauthorized' },
-        { status: 403 }
+        { status: 401 }
       )
     }
 
@@ -114,17 +114,18 @@ export async function PUT(
       )
     }
 
-    // Check if current user is authorized to approve this request
-    if (existingApproval.rule) {
+    // Verify the current user is ADMIN or the specifically assigned approver
+    if (session.user.role !== 'ADMIN') {
       const rule = existingApproval.rule
-      const isAuthorized =
-        rule.approverUserId === session.user.id ||
-        rule.approverRole === session.user.role ||
-        ['ADMIN', 'MANAGER'].includes(session.user.role)
-
-      if (!isAuthorized) {
+      if (rule?.approverUserId && rule.approverUserId !== session.user.id) {
         return NextResponse.json(
-          { success: false, error: 'You are not authorized to resolve this approval' },
+          { error: 'You are not the assigned approver for this request' },
+          { status: 403 }
+        )
+      }
+      if (rule?.approverRole && rule.approverRole !== session.user.role) {
+        return NextResponse.json(
+          { error: 'Your role does not match the required approver role' },
           { status: 403 }
         )
       }

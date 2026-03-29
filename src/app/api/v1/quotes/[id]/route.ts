@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendEmail } from '@/lib/email'
 import { updateQuoteSchema } from '@/lib/validations'
 import { searchDeals, updateDealStage, createEngagementNote } from '@/lib/hubspot'
 
@@ -209,6 +210,19 @@ export async function PATCH(
         }),
       },
     })
+
+    // Notify quote creator when status changes to ACCEPTED or REJECTED
+    if (data.status === 'ACCEPTED' || data.status === 'REJECTED') {
+      if (quote.createdBy?.email) {
+        const quoteNum = quote.quoteNumber || existingQuote.quoteNumber
+        const clientName = quote.client?.name || 'client'
+        sendEmail(
+          quote.createdBy.email,
+          `Quote ${quoteNum} ${data.status.toLowerCase()}`,
+          `<p>Quote <strong>${quoteNum}</strong> for ${clientName} has been <strong>${data.status.toLowerCase()}</strong>.</p>`
+        ).catch(console.error)
+      }
+    }
 
     const response: Record<string, unknown> = {
       success: true,

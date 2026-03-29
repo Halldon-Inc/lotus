@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/db'
+import { sendEmail } from '@/lib/email'
+import { deliveryConfirmed } from '@/lib/email-templates'
 import { updateShipmentSchema } from '@/lib/validations'
 
 export async function GET(
@@ -164,6 +166,21 @@ export async function PUT(
         }),
       },
     })
+
+    // Notify client when shipment is delivered
+    if (data.status === 'DELIVERED' && existing.status !== 'DELIVERED') {
+      const po = await prisma.purchaseOrder.findUnique({
+        where: { id: existing.purchaseOrderId },
+        include: { client: { select: { contactEmail: true, contactName: true, name: true } } },
+      })
+      if (po?.client?.contactEmail) {
+        const template = deliveryConfirmed(
+          po.client.contactName || po.client.name,
+          po.poNumber
+        )
+        sendEmail(po.client.contactEmail, template.subject, template.html).catch(console.error)
+      }
+    }
 
     return NextResponse.json({
       success: true,

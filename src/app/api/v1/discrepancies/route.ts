@@ -131,6 +131,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!['ADMIN', 'MANAGER', 'PROCUREMENT', 'OPERATIONS'].includes(session.user.role)) {
+      return NextResponse.json(
+        { error: 'Only procurement and operations staff can report discrepancies' },
+        { status: 403 }
+      )
+    }
+
     const body = await request.json()
     const validation = createDiscrepancySchema.safeParse(body)
 
