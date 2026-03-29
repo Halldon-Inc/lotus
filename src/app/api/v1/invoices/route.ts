@@ -148,8 +148,8 @@ export async function POST(request: NextRequest) {
             lte: data.totalAmount * 1.01,
           },
           receivedAt: {
-            gte: new Date(new Date(data.receivedAt || Date.now()).getTime() - 3 * 24 * 60 * 60 * 1000),
-            lte: new Date(new Date(data.receivedAt || Date.now()).getTime() + 3 * 24 * 60 * 60 * 1000),
+            gte: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
+            lte: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
           },
         },
       })
