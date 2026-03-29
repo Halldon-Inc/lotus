@@ -13,13 +13,8 @@ function getDbUrl(): string {
   }
 
   // Production / Vercel: SQLite must live in /tmp (writable)
+  // Always copy from bundle to ensure fresh data after each deploy
   const tmpDb = '/tmp/dev.db'
-
-  if (fs.existsSync(tmpDb)) {
-    return `file:${tmpDb}`
-  }
-
-  // Try every known bundled location (outputFileTracingIncludes bundles these)
   const cwd = process.cwd()
   const sources = [
     path.join(cwd, 'prisma', 'dev.db'),
@@ -32,7 +27,6 @@ function getDbUrl(): string {
     try {
       if (fs.existsSync(src)) {
         fs.copyFileSync(src, tmpDb)
-        console.log(`[db] Copied from ${src} to ${tmpDb}`)
         return `file:${tmpDb}`
       }
     } catch (err) {
